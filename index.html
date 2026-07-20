@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Portfolio · Emprende FBA — Diseño Web</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500&display=swap">
+<style>
+  :root{--bg:#0a0a0f;--card:#14141d;--line:rgba(255,255,255,.09);--ink:#f4f4f8;--mute:#9a9ab0;--accent:#6b7bff;--accent-2:#b46bff;--radius:18px;--maxw:1220px;--ease:cubic-bezier(.16,1,.3,1);--display:"Space Grotesk",system-ui,sans-serif;--sans:"Inter",system-ui,-apple-system,sans-serif}
+  *,*::before,*::after{box-sizing:border-box;margin:0}
+  html{scroll-behavior:smooth}
+  body{font-family:var(--sans);background:var(--bg);color:var(--ink);line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  a{color:inherit;text-decoration:none}
+  ::selection{background:var(--accent);color:#fff}
+  body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(40% 34% at 12% 8%,rgba(107,123,255,.20),transparent 60%),radial-gradient(40% 34% at 90% 4%,rgba(180,107,255,.16),transparent 60%),radial-gradient(50% 40% at 80% 96%,rgba(107,123,255,.10),transparent 60%)}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 clamp(1.2rem,4vw,2.5rem)}
+  header.hero{padding:clamp(3.5rem,9vw,6.5rem) 0 clamp(2rem,5vw,3rem);text-align:center}
+  .badge{display:inline-flex;align-items:center;gap:.5rem;padding:.4rem .9rem;border:1px solid var(--line);border-radius:100px;font-size:.8rem;color:var(--mute);letter-spacing:.04em;margin-bottom:1.6rem;background:rgba(255,255,255,.03)}
+  .badge .dot{width:8px;height:8px;border-radius:50%;background:#39d98a;box-shadow:0 0 0 4px rgba(57,217,138,.18)}
+  h1.title{font-family:var(--display);font-weight:700;letter-spacing:-.03em;line-height:1.02;font-size:clamp(2.4rem,7vw,5rem)}
+  h1.title em{font-style:normal;background:linear-gradient(120deg,var(--accent),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--mute);max-width:56ch;margin:1.4rem auto 0;font-size:clamp(1rem,2vw,1.18rem)}
+  .stats{display:flex;flex-wrap:wrap;gap:2.4rem;justify-content:center;margin-top:2.6rem}
+  .stat b{font-family:var(--display);font-size:1.9rem;font-weight:600;display:block;line-height:1}
+  .stat span{font-size:.82rem;color:var(--mute);letter-spacing:.03em}
+  .filters{display:flex;flex-wrap:wrap;gap:.6rem;justify-content:center;margin:2.6rem auto 0;position:sticky;top:0;z-index:20;padding:1rem 0;background:linear-gradient(180deg,var(--bg) 60%,transparent)}
+  .chip{font-family:var(--display);font-size:.86rem;font-weight:500;padding:.5rem 1rem;border-radius:100px;border:1px solid var(--line);color:var(--mute);background:rgba(255,255,255,.02);cursor:pointer;transition:all .35s var(--ease);white-space:nowrap}
+  .chip:hover{color:var(--ink);border-color:rgba(255,255,255,.25)}
+  .chip.is-active{background:linear-gradient(120deg,var(--accent),var(--accent-2));color:#fff;border-color:transparent}
+  .grid{display:grid;gap:1.4rem;grid-template-columns:1fr;padding:1.5rem 0 4rem}
+  @media(min-width:640px){.grid{grid-template-columns:1fr 1fr}}
+  @media(min-width:1000px){.grid{grid-template-columns:1fr 1fr 1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column;transition:transform .5s var(--ease),box-shadow .5s var(--ease),border-color .5s var(--ease);opacity:0;transform:translateY(24px)}
+  .card.in{opacity:1;transform:none}
+  .card:hover{transform:translateY(-6px);border-color:rgba(255,255,255,.22);box-shadow:0 30px 60px -30px rgba(0,0,0,.8)}
+  .thumb{position:relative;aspect-ratio:16/10;overflow:hidden;background:#000}
+  .thumb .bar{position:absolute;top:0;left:0;right:0;height:30px;background:rgba(0,0,0,.35);display:flex;align-items:center;gap:6px;padding:0 12px;z-index:2;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+  .thumb .bar i{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.35)}
+  .thumb .bar .u{margin-left:8px;font-size:.66rem;color:rgba(255,255,255,.7);font-family:var(--display);letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .thumb .canvas{position:absolute;inset:30px 0 0 0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:1rem;gap:.5rem}
+  .thumb .canvas h3{font-family:var(--display);font-weight:700;font-size:clamp(1.1rem,2.4vw,1.5rem);letter-spacing:-.02em;color:#fff;text-shadow:0 2px 20px rgba(0,0,0,.5)}
+  .thumb .canvas .k{font-size:.62rem;letter-spacing:.28em;text-transform:uppercase;color:rgba(255,255,255,.8);font-weight:600}
+  .thumb .canvas .line{width:46px;height:3px;border-radius:3px;background:rgba(255,255,255,.6)}
+  .card-body{padding:1.2rem 1.3rem 1.4rem;display:flex;flex-direction:column;gap:.5rem;flex:1}
+  .card-tag{font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:600;font-family:var(--display)}
+  .card-body h4{font-family:var(--display);font-weight:600;font-size:1.2rem;letter-spacing:-.01em}
+  .card-body p{font-size:.9rem;color:var(--mute);flex:1}
+  .card-cta{display:inline-flex;align-items:center;gap:.4rem;margin-top:.4rem;font-family:var(--display);font-weight:500;font-size:.9rem;color:var(--ink);transition:gap .35s var(--ease),color .35s}
+  .card:hover .card-cta{gap:.7rem;color:var(--accent)}
+  .cta{text-align:center;padding:clamp(3rem,7vw,5rem) clamp(1.5rem,5vw,4rem);margin:2rem 0 4rem;border:1px solid var(--line);border-radius:26px;background:linear-gradient(160deg,rgba(107,123,255,.10),rgba(180,107,255,.06))}
+  .cta h2{font-family:var(--display);font-weight:700;font-size:clamp(1.8rem,4.5vw,3rem);letter-spacing:-.02em}
+  .cta p{color:var(--mute);max-width:48ch;margin:1rem auto 2rem}
+  .btn{display:inline-flex;align-items:center;gap:.6rem;padding:.95rem 1.8rem;border-radius:100px;font-family:var(--display);font-weight:600;font-size:1rem;background:linear-gradient(120deg,var(--accent),var(--accent-2));color:#fff;transition:transform .4s var(--ease),box-shadow .4s var(--ease);box-shadow:0 16px 40px -16px rgba(107,123,255,.8)}
+  .btn:hover{transform:translateY(-3px);box-shadow:0 24px 50px -16px rgba(107,123,255,.9)}
+  footer{border-top:1px solid var(--line);padding:2rem 0;text-align:center;color:var(--mute);font-size:.85rem}
+  footer b{font-family:var(--display);color:var(--ink);font-weight:600}
+  .empty{grid-column:1/-1;text-align:center;color:var(--mute);padding:3rem 0;font-family:var(--display)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <span class="badge"><span class="dot"></span>Portfolio · Diseño web premium</span>
+    <h1 class="title">Webs que hacen que<br>una marca <em>parezca grande.</em></h1>
+    <p class="sub">Una selección de proyectos reales diseñados a medida — clínicas, estética, salud, producto y más. Cada web, pensada para vender.</p>
+    <div class="stats">
+      <div class="stat"><b data-count="38">38</b><span>webs creadas</span></div>
+      <div class="stat"><b data-count="9">9</b><span>sectores</span></div>
+      <div class="stat"><b>100%</b><span>diseño a medida</span></div>
+    </div>
+    <nav class="filters" id="filters"></nav>
+  </header>
+  <main class="grid" id="grid"></main>
+  <section class="cta">
+    <h2>¿Quieres una web así para tu negocio?</h2>
+    <p>Diseño webs premium, rápidas y listas para captar clientes. Cuéntame tu proyecto y te preparo una propuesta.</p>
+    <a class="btn" id="waBtn" href="#" target="_blank" rel="noopener">Hablar por WhatsApp →</a>
+  </section>
+</div>
+<footer><p><b>Emprende FBA</b> — Diseño Web · Las Palmas de Gran Canaria</p></footer>
+<script>
+const WA = "34600000000"; // ← pon aquí tu número de WhatsApp (con prefijo, sin +)
+const WEBS = [
+  {name:"Dra. Alba Lorenzo Merán", sector:"Estética", desc:"Odontología y armonización orofacial · Las Palmas.", colors:["#c97c66","#9c6f7e"], url:"dra-alomeran.html"},
+  {name:"Instituto Rubí", sector:"Estética", desc:"Cirugía plástica y medicina estética.", colors:["#b23a6a","#3a1526"], url:"instituto-rubi.html"},
+  {name:"Clínica Dental Mercurio", sector:"Dental", desc:"Clínica dental desde 1986 · Maspalomas · TAC 3D.", colors:["#042a5a","#e2547f"], url:"clinica-mercurio.html"},
+  {name:"Clínica Pedro Infinito", sector:"Dental", desc:"Odontología especializada desde 1990 · Las Palmas.", colors:["#0f2a43","#37d0b5"], url:"clinica-pedro-infinito.html"},
+  {name:"Clínica López Rodrigo", sector:"Dental", desc:"Clínica dental familiar desde 2005.", colors:["#0d7d66","#0a5f4e"], url:"clinica-lopez-rodrigo.html"},
+  {name:"Clínica Marta Cabrera", sector:"Dental", desc:"Dental premium · turquesa y acero de marca.", colors:["#16b6c4","#20323a"], url:"clinica-marta-cabrera.html"},
+  {name:"Clínica Churruca", sector:"Dental", desc:"Clínica dental.", colors:["#1f6fb2","#0e2a44"], url:"clinica-churruca.html"},
+  {name:"Clínicas Dra. Carballo", sector:"Dental", desc:"Odontología y medicina estética facial.", colors:["#2b7de0","#0e3a66"], url:"dental-carballo.html"},
+  {name:"Dental Carrizal Premium", sector:"Dental", desc:"Clínica dental en Carrizal y Vecindario.", colors:["#1f7a8c","#10303a"], url:"dental-carrizal-premium.html"},
+  {name:"Gabinete Dental Carrizal", sector:"Dental", desc:"Clínica dental en Carrizal y Vecindario.", colors:["#2a8ea0","#12333c"], url:"gabinete-dental-carrizal.html"},
+  {name:"LAOOAL Dental", sector:"Dental", desc:"Red de clínicas en Canarias y Cádiz.", colors:["#9A9943","#6f6e2f"], url:"looal-dental.html"},
+  {name:"Clínica Dental Yelitza", sector:"Dental", desc:"Clínica dental · El Tablero de Maspalomas.", colors:["#8a67a0","#2d1b34"], url:"yelitza-dental.html"},
+  {name:"Velvet Peluquería", sector:"Belleza", desc:"Eco peluquería y estética · Ingenio.", colors:["#6d3b57","#241019"], url:"velvet-peluqueria.html"},
+  {name:"STYLOCEL", sector:"Belleza", desc:"Peluquería unisex · Ingenio.", colors:["#c9a24a","#241c14"], url:"stylocel.html"},
+  {name:"Eva Peluqueros", sector:"Belleza", desc:"Peluquería en Ojos de Garza desde 1978.", colors:["#c06a86","#2a1a22"], url:"eva-peluqueros.html"},
+  {name:"Havana Nails", sector:"Belleza", desc:"Centro de uñas y estética · Las Palmas.", colors:["#b58a6a","#3a2a24"], url:"havana-nails.html"},
+  {name:"Barbería Amin", sector:"Belleza", desc:"Barber club · San Fernando de Maspalomas.", colors:["#b8863a","#171717"], url:"barberia-amin.html"},
+  {name:"Fisioterapia MED 2.0", sector:"Salud", desc:"Clínica de fisioterapia premium.", colors:["#1f8a8a","#0e2f30"], url:"fisioterapia-med.html"},
+  {name:"Fisioterapia Cristina", sector:"Salud", desc:"Fisioterapia y rehabilitación · Carrizal.", colors:["#2f7fb0","#123047"], url:"fisioterapia-cristina.html"},
+  {name:"Centro Yedra", sector:"Salud", desc:"Fisioterapia y salud · Ingenio (multipágina).", colors:["#4a8f5b","#1a2f20"], url:"fisio-yedra-premium.html"},
+  {name:"SSG Fisioterapia", sector:"Salud", desc:"Centro de fisioterapia · Ingenio.", colors:["#d1662a","#2a2018"], url:"ssg-fisioterapia.html"},
+  {name:"Centro Rita Alonso", sector:"Salud", desc:"Masaje terapéutico y drenaje linfático · Ingenio.", colors:["#8a9a63","#3a4028"], url:"centro-rita-alonso.html"},
+  {name:"Controology", sector:"Salud", desc:"Centro postural, fisioterapia y pilates.", colors:["#b07a4a","#2c1d12"], url:"controology.html"},
+  {name:"Nona Centro Maternal", sector:"Salud", desc:"Embarazo, posparto y familia · Las Palmas.", colors:["#c98aa0","#3a2530"], url:"web-nona.html"},
+  {name:"Casa Mario", sector:"Hostelería", desc:"Bar restaurante familiar · Telde.", colors:["#2a1c16","#c8703a"], url:"casa-mario.html"},
+  {name:"Orleans Pastelería", sector:"Hostelería", desc:"Pastelería artesanal · Las Palmas.", colors:["#7a4a2a","#e0a8b0"], url:"orleans-pasteleria.html"},
+  {name:"Floristería San Rafael", sector:"Servicios", desc:"Floristería artesanal · Vecindario.", colors:["#3f7d5a","#e08a6a"], url:"floristeria-san-rafael.html"},
+  {name:"Multiservicios González", sector:"Servicios", desc:"Reformas y mantenimiento integral.", colors:["#c68a2e","#2a2015"], url:"multiservicios-gonzalez.html"},
+  {name:"Emprende FBA — Diseño Web", sector:"Servicios", desc:"Mi servicio de diseño web premium.", colors:["#0b0b12","#5b6bff"], url:"emprende-fba.html"},
+  {name:"Tecoverpro", sector:"Producto", desc:"Fundas impermeables outdoor · Amazon.", colors:["#10182B","#07BDF3"], url:"tecoverpro.html"},
+  {name:"SrmPets", sector:"Producto", desc:"Protector de sofá antiarañazos para gatos.", colors:["#241a12","#D1B284"], url:"srmpets.html"},
+  {name:"Neyral Home", sector:"Producto", desc:"Organizador extensible de cajón de cocina.", colors:["#1c2b45","#c9b089"], url:"neyral-home.html"},
+  {name:"Better Half Nutrition", sector:"Producto", desc:"Suplemento de longevidad canina.", colors:["#6f7d54","#d8a94a"], url:"better-half-nutrition.html"},
+  {name:"DGM Racing Chip", sector:"Automoción", desc:"Mecánica, electrónica y reprogramación.", colors:["#15a6e0","#f49000"], url:"dgm-racing-chip.html"},
+  {name:"Taller Chano", sector:"Automoción", desc:"Taller mecánico · Las Palmas.", colors:["#FF5A1F","#191B1F"], url:"taller-chano.html"},
+  {name:"Sánchez Automoción", sector:"Automoción", desc:"Taller mecánico multimarca · Ingenio.", colors:["#2b6cb0","#12233a"], url:"sanchez-automocion.html"},
+  {name:"Equipo GT", sector:"Automoción", desc:"Taller mecánico · Ingenio.", colors:["#3a6cb0","#12233a"], url:"equipo-gt.html"},
+  {name:"Azulaya Inmobiliaria", sector:"Inmobiliaria", desc:"Compra, venta y alquiler · Las Palmas.", colors:["#2a7ab0","#0e2c40"], url:"azulaya-inmobiliaria.html"}
+];
+const grid=document.getElementById('grid'),filtersEl=document.getElementById('filters');
+const SECTORS=["Todas",...Array.from(new Set(WEBS.map(w=>w.sector)))];
+let active="Todas";
+function cardHTML(w){
+  const grad=`linear-gradient(140deg, ${w.colors[0]} 0%, ${w.colors[1]} 100%)`;
+  return `<a class="card" data-sector="${w.sector}" href="${w.url}" target="_blank" rel="noopener">
+    <div class="thumb" style="background:${grad}">
+      <div class="bar"><i></i><i></i><i></i><span class="u">${w.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')}.web</span></div>
+      <div class="canvas"><span class="k">${w.sector}</span><h3>${w.name}</h3><span class="line"></span></div>
+    </div>
+    <div class="card-body"><span class="card-tag">${w.sector}</span><h4>${w.name}</h4><p>${w.desc}</p><span class="card-cta">Abrir demo →</span></div>
+  </a>`;
+}
+function render(){
+  const list=WEBS.filter(w=>active==="Todas"||w.sector===active);
+  grid.innerHTML=list.length?list.map(cardHTML).join(''):'<p class="empty">Sin webs en este sector.</p>';
+  requestAnimationFrame(()=>{document.querySelectorAll('.card').forEach((c,i)=>{c.style.transitionDelay=(i%3)*60+'ms';io.observe(c);});});
+}
+const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.08});
+filtersEl.innerHTML=SECTORS.map(s=>`<button class="chip ${s==='Todas'?'is-active':''}" data-s="${s}">${s}</button>`).join('');
+filtersEl.addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;active=b.dataset.s;document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('is-active',c===b));render();});
+document.querySelectorAll('[data-count]').forEach(el=>{const t=parseInt(el.dataset.count,10);let s=null;function step(ts){if(s===null)s=ts;const p=Math.min((ts-s)/900,1);el.textContent=Math.round(t*(1-Math.pow(1-p,3)));if(p<1)requestAnimationFrame(step);else el.textContent=t;}requestAnimationFrame(step);});
+document.getElementById('waBtn').href=`https://wa.me/${WA}?text=${encodeURIComponent('Hola, he visto tu portfolio y me interesa una web para mi negocio.')}`;
+render();
+</script>
+</body>
+</html>
