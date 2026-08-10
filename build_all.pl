@@ -40,6 +40,7 @@ my @projects = (
   ["taller-rpm",               "$H/.claude/taller-rpm"],
   ["equipo-gt",                "$H/.claude/equipo-gt"],
   ["fisio-yedra-premium",      "$H/Desktop/WEB/fisio-yedra-premium"],
+  ["paula-mateos",             "$H/Desktop/WEB/paula-mateos-tattoo"],
 );
 
 my %MIME = (
