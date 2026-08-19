@@ -232,6 +232,55 @@ table.tbl input[type=number]{width:82px}
   .content{padding:16px 14px 70px}
   .topbar{padding:10px 14px}
 }
+
+/* ==========================================================================
+   BALDOSAS DE PERÍODO — una tarjeta por ventana temporal, con la cascada
+   dentro. La banda de color progresa de azul a verde para que la mirada
+   recorra los periodos en orden sin tener que leer los títulos.
+   ========================================================================== */
+:root{
+  --b1:#3b7cc4; --b2:#4d90b6; --b3:#3f9d9b; --b4:#2f8f80; --b5:#4a9f5c;
+}
+:root[data-theme="dark"]{
+  --b1:#2d5f96; --b2:#3b6f8c; --b3:#2f7876; --b4:#246d62; --b5:#387a48;
+}
+
+.baldosas{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:12px;align-items:start}
+.bald{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden;
+  box-shadow:var(--shadow);display:flex;flex-direction:column;cursor:pointer;
+  border-bottom:3px solid transparent;transition:border-color .12s,box-shadow .12s}
+.bald:hover{box-shadow:0 3px 10px rgba(16,24,40,.12)}
+.bald.on{border-bottom-color:var(--bc)}
+.bald .cab{background:var(--bc);color:#fff;padding:11px 15px 12px}
+.bald .cab b{display:block;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;
+  letter-spacing:.02em;line-height:1.1}
+.bald .cab span{display:block;font-size:11px;opacity:.88;margin-top:2px;font-variant-numeric:tabular-nums}
+.bald .cue{padding:12px 15px 4px}
+.bald .lb{font-size:11px;color:var(--muted)}
+.bald .gr{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:1.85rem;line-height:1.05;
+  font-variant-numeric:tabular-nums;margin:1px 0 2px}
+.bald .dlt{font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums}
+.bald .par{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;padding:9px 15px;
+  border-top:1px solid var(--line-2);font-size:12.5px;font-variant-numeric:tabular-nums}
+.bald .par .lb{font-size:10.5px;letter-spacing:.02em}
+.bald .par b{font-weight:600;display:block;line-height:1.3}
+.bald .mas{border-top:1px solid var(--line-2);text-align:center;padding:7px;font-size:12px;
+  color:var(--accent-2);font-weight:600;margin-top:auto}
+.bald .mas:hover{background:var(--sunken)}
+.bald .detalle{display:none;padding:2px 15px 12px;border-top:1px solid var(--line-2)}
+.bald.abierta .detalle{display:block}
+
+/* Miniatura del producto en la tabla: sin fotos, una pastilla con la inicial
+   de la familia mantiene la fila reconocible de un vistazo. */
+.mini-prod{display:flex;gap:10px;align-items:flex-start;min-width:300px}
+.mini-prod .ph{width:34px;height:34px;border-radius:5px;flex:none;display:flex;align-items:center;
+  justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;
+  color:#fff;background:var(--accent);letter-spacing:.02em}
+.mini-prod .tx{min-width:0}
+.mini-prod .ref{font-size:10.5px;color:var(--muted);font-family:ui-monospace,Consolas,monospace}
+.mini-prod .nom{font-size:12.5px;font-weight:600;line-height:1.3;margin:1px 0}
+.mini-prod .eco{font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.mini-prod .eco .al{color:var(--crit);font-weight:600}
 </style>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23111820'/><text x='16' y='23' font-family='sans-serif' font-size='17' font-weight='700' fill='%23b3351d' text-anchor='middle'>K</text></svg>">
 </head>
@@ -1653,46 +1702,6 @@ window.SEED = function () {
 
   /* ===================== bloques de la portada ===================== */
 
-  function bloqueKpis(rango, r, rPrev, v, vPrev) {
-    const obj = A.DB().settings.ppcDefault.tacosObjetivo || 0.12;
-    const serie = Q.serie(rango.desde, rango.hasta, {}, 'importe').map((x) => x.valor);
-    const dv = variacion(v.bruto, vPrev.bruto);
-
-    const tonoBeneficio = r.beneficio < 0 ? 'crit' : (r.margen != null && r.margen < 0.08 ? 'warn' : 'ok');
-    const tonoMargen = r.margen == null ? '' : r.margen < 0 ? 'crit' : r.margen < 0.08 ? 'warn' : r.margen >= 0.15 ? 'ok' : '';
-    const tonoPpc = r.tacos == null ? '' : r.tacos > obj * 1.5 ? 'crit' : r.tacos > obj ? 'warn' : 'ok';
-
-    return UI.el(`<div class="grid g4">
-      ${UI.kpi({
-      label: 'Ventas del periodo',
-      valor: F.eur(v.bruto, 0),
-      delta: dv,
-      sec: `${F.n(v.unidades)} uds · ${F.n(v.pedidos)} pedidos
-            ${UI.spark(serie, 150, 28, dv == null ? '' : dv >= 0 ? 'ok' : 'crit')}`,
-    })}
-      ${UI.kpi({
-      label: 'Beneficio real',
-      valor: F.eur(r.beneficio, 0),
-      delta: variacion(r.beneficio, rPrev.beneficio),
-      sec: `${F.eur(r.beneficioUd)} por unidad · ya descontados PPC y devoluciones`,
-      tono: tonoBeneficio,
-    })}
-      ${UI.kpi({
-      label: 'Margen neto',
-      valor: pctSeguro(r.margen),
-      sec: `Periodo anterior: ${pctSeguro(rPrev.margen)} · ACOS de equilibrio ${pctSeguro(r.acosEquilibrio)}`,
-      tono: tonoMargen,
-    })}
-      ${UI.kpi({
-      label: 'Gasto en publicidad',
-      valor: F.eur(r.ppc, 0),
-      sec: `TACOS ${pctSeguro(r.tacos)} (objetivo ${pctSeguro(obj)}) · ACOS ${pctSeguro(r.acos)}<br>
-            anterior ${F.eur(rPrev.ppc, 0)}`,
-      tono: tonoPpc,
-    })}
-    </div>`);
-  }
-
   function bloquePeriodo(rango) {
     const barra = UI.el(`<div class="toolbar" style="margin:14px 0 4px">
       <div class="seg">${PRESETS.map(([k, t]) =>
@@ -2052,6 +2061,173 @@ window.SEED = function () {
       </div></div></div>`);
   }
 
+  /* ===================== baldosas de período ===================== */
+  /* Cinco ventanas temporales a la vez, cada una con su cascada resumida. Se
+     ven de un vistazo sin cambiar de selector; al pulsar una, el resto de la
+     portada pasa a hablar de ese periodo. */
+  const VENTANAS = [
+    ['hoy', 'Hoy', 'b1'], ['ayer', 'Ayer', 'b2'], ['d7', 'Últimos 7 días', 'b3'],
+    ['d30', 'Últimos 30 días', 'b4'], ['mes', 'Este mes', 'b5'],
+  ];
+
+  function rotuloRango(rango) {
+    return rango.dias <= 1 ? F.fecha(rango.hasta) : F.fecha(rango.desde) + ' — ' + F.fecha(rango.hasta);
+  }
+
+  function dlt(v, suf) {
+    if (v == null || !isFinite(v)) return '<span class="dlt flat">sin comparación</span>';
+    const c = v > 0.001 ? 'up' : v < -0.001 ? 'down' : 'flat';
+    return '<span class="dlt ' + c + '">' + F.delta(v) + (suf === false ? '' : ' vs. anterior') + '</span>';
+  }
+
+  function bloqueBaldosas() {
+    const cajas = VENTANAS.map(function (w) {
+      const k = w[0], titulo = w[1], color = w[2];
+      const rango = UI.rango(k);
+      const prev = UI.anterior(rango);
+      const v = Q.ventas({ desde: rango.desde, hasta: rango.hasta });
+      const vPrev = Q.ventas({ desde: prev.desde, hasta: prev.hasta });
+      const r = Calc.rentabilidad({ desde: rango.desde, hasta: rango.hasta });
+      const rPrev = Calc.rentabilidad({ desde: prev.desde, hasta: prev.hasta });
+      const nDev = (A.DB().devoluciones || []).filter(function (d) {
+        return d.fecha >= rango.desde && d.fecha <= rango.hasta;
+      }).length;
+      const tono = r.beneficio < 0 ? 'neg' : 'pos';
+
+      return '' +
+        '<div class="bald ' + (k === preset ? 'on' : '') + '" data-p="' + k + '" style="--bc:var(--' + color + ')"' +
+        '     role="button" tabindex="0" aria-label="Ver el periodo ' + A.esc(titulo) + '">' +
+        '<div class="cab"><b>' + A.esc(titulo) + '</b><span>' + rotuloRango(rango) + '</span></div>' +
+        '<div class="cue">' +
+        '<div class="lb">Ventas</div>' +
+        '<div class="gr">' + F.eur(v.bruto) + '</div>' +
+        dlt(variacion(v.bruto, vPrev.bruto)) +
+        '</div>' +
+        '<div class="par">' +
+        '<div><div class="lb">Pedidos / Unidades</div><b>' + F.n(v.pedidos) + ' / ' + F.n(v.unidades) + '</b></div>' +
+        '<div><div class="lb">Devoluciones</div><b>' + (nDev ? F.n(nDev) + ' · ' + F.eur(r.devoluciones, 0) : '0') + '</b></div>' +
+        '</div>' +
+        '<div class="par">' +
+        '<div><div class="lb">Publicidad</div><b class="neg">' + (r.ppc ? menos(r.ppc) : F.eur(0)) + '</b></div>' +
+        '<div><div class="lb">Tarifas Amazon</div><b class="neg">' + (r.tarifas ? menos(r.tarifas) : F.eur(0)) + '</b></div>' +
+        '</div>' +
+        '<div class="par">' +
+        '<div><div class="lb">Ganancia bruta</div><b>' + F.eur(r.brutoAntesPpc) + '</b></div>' +
+        '<div><div class="lb">Ganancia neta</div><b class="' + tono + '">' + F.eur(r.beneficio) + '</b>' +
+        dlt(variacion(r.beneficio, rPrev.beneficio), false) + '</div>' +
+        '</div>' +
+        '<div class="detalle cascada">' +
+        '<div class="ln"><span>Ventas sin IVA</span><span>' + F.eur(r.ventasNetas) + '</span></div>' +
+        '<div class="ln"><span>Coste de los bienes</span><span class="neg">' + menos(r.cogs) + '</span></div>' +
+        '<div class="ln"><span>Comisión de Amazon</span><span class="neg">' + menos(r.referral) + '</span></div>' +
+        '<div class="ln"><span>Logística FBA</span><span class="neg">' + menos(r.fba) + '</span></div>' +
+        '<div class="ln"><span>Envío y entrada</span><span class="neg">' + menos(r.logistica) + '</span></div>' +
+        '<div class="ln"><span>Publicidad</span><span class="neg">' + menos(r.ppc) + '</span></div>' +
+        '<div class="ln tot"><span>Beneficio</span><span class="' + tono + '">' + F.eur(r.beneficio) + '</span></div>' +
+        '<div class="ln"><span>Margen</span><span>' + pctSeguro(r.margen) + '</span></div>' +
+        '<div class="ln"><span>TACOS</span><span>' + pctSeguro(r.tacos) + '</span></div>' +
+        '<div class="ln"><span>ACOS de equilibrio</span><span>' + pctSeguro(r.acosEquilibrio) + '</span></div>' +
+        '<div class="ln"><span>Beneficio por unidad</span><span>' + (v.unidades ? F.eur(r.beneficio / v.unidades) : '—') + '</span></div>' +
+        '</div>' +
+        '<div class="mas" data-mas="1">Más</div>' +
+        '</div>';
+    }).join('');
+
+    const el = UI.el('<div class="baldosas">' + cajas + '</div>');
+    el.querySelectorAll('.bald').forEach(function (b) {
+      const activar = function (e) {
+        if (e.target && e.target.dataset && e.target.dataset.mas) {
+          e.stopPropagation();
+          b.classList.toggle('abierta');
+          e.target.textContent = b.classList.contains('abierta') ? 'Menos' : 'Más';
+          return;
+        }
+        preset = b.dataset.p;
+        pintar();
+      };
+      b.addEventListener('click', activar);
+      b.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activar(e); }
+      });
+    });
+    return el;
+  }
+
+  /* ===================== tabla de productos del período ===================== */
+  function bloqueTablaProductos(prods, filas, rango) {
+    const totalVentas = A.sum(filas, function (f) { return f.brutas; });
+    const inicial = function (p) { return (p && p.familia ? p.familia[0] : '·').toUpperCase(); };
+    const stockDe = function (sku) { const s = Q.stock(sku, null); return s.disponible + s.transito; };
+
+    const cols = [
+      {
+        k: 'sku', t: 'Producto', cls: 'wrap',
+        sv: function (f) { return (prods.get(f.sku) || {}).titulo || f.sku; },
+        r: function (f) {
+          const p = prods.get(f.sku) || {};
+          const st = stockDe(f.sku);
+          const cst = Calc.coste(f.sku, rango.hasta);
+          const precio = p.porPais && p.porPais.ES ? F.eur(p.porPais.ES.precio) : '—';
+          return '<div class="mini-prod">' +
+            '<div class="ph">' + A.esc(inicial(p)) + '</div>' +
+            '<div class="tx">' +
+            '<div class="ref">' + A.esc(p.asin || '—') + ' · SKU ' + A.esc(f.sku) + '</div>' +
+            '<div class="nom">' + A.esc((p.titulo || '(sin ficha de producto)').slice(0, 58)) + '</div>' +
+            '<div class="eco">' + precio +
+            ' · COGS: ' + (cst ? F.eur(cst) : '<span class="al">sin coste</span>') +
+            ' · Stock: <span class="' + (st < 30 ? 'al' : '') + '">' + F.n(st) + '</span></div>' +
+            '</div></div>';
+        },
+      },
+      { k: 'unidades', t: 'Uds', num: true, r: function (f) { return F.n(f.unidades); } },
+      { k: 'brutas', t: 'Ventas', num: true, r: function (f) { return F.eur(f.brutas, 0); } },
+      {
+        k: 'cuota', t: '% del total', num: true, sv: function (f) { return f.brutas; },
+        r: function (f) { return totalVentas ? F.pct(f.brutas / totalVentas) : '—'; },
+      },
+      { k: 'ppc', t: 'Publicidad', num: true, r: function (f) { return f.ppc ? '<span class="neg">' + menos(f.ppc) + '</span>' : '—'; } },
+      { k: 'devol', t: 'Devoluciones', num: true, r: function (f) { return f.devol ? '<span class="neg">' + menos(f.devol) + '</span>' : '—'; } },
+      { k: 'cogs', t: 'Coste bienes', num: true, r: function (f) { return '<span class="neg">' + menos(f.cogs) + '</span>'; } },
+      { k: 'tarifas', t: 'Tarifas Amazon', num: true, r: function (f) { return '<span class="neg">' + menos(f.tarifas) + '</span>'; } },
+      { k: 'antesPpc', t: 'Gan. bruta', num: true, r: function (f) { return F.eur(f.antesPpc, 0); } },
+      {
+        k: 'beneficio', t: 'Gan. neta', num: true,
+        r: function (f) { return '<b class="' + (f.beneficio < 0 ? 'neg' : 'pos') + '">' + F.eur(f.beneficio, 0) + '</b>'; },
+      },
+      { k: 'margen', t: 'Margen', num: true, r: function (f) { return pctSeguro(f.margen); } },
+      {
+        k: 'tacos', t: 'TACOS', num: true,
+        r: function (f) {
+          if (f.tacos == null) return '—';
+          const obj = Q.ppcConfig(f.sku, 'ES').tacosObjetivo;
+          return '<span class="' + (f.tacos > obj ? 'neg' : '') + '">' + pctSeguro(f.tacos) + '</span>';
+        },
+      },
+    ];
+
+    const orden = filas.slice().sort(function (a, b) { return b.brutas - a.brutas; });
+    const caja = UI.el('<div></div>');
+    caja.appendChild(UI.el('<div class="toolbar" style="margin:24px 0 10px">' +
+      '<h2 style="margin:0">Productos</h2>' +
+      '<span class="mini">' + F.n(orden.length) + ' con actividad · ' + rotuloRango(rango) + '</span>' +
+      '<span class="sp"></span>' +
+      '<input type="search" id="bpFiltro" placeholder="Filtrar por SKU, ASIN o título…">' +
+      '</div>'));
+    const tabla = UI.tabla(cols, orden, { vacio: 'Ningún producto ha tenido ventas ni gasto en este periodo.' });
+    caja.appendChild(tabla);
+
+    caja.querySelector('#bpFiltro').addEventListener('input', function (e) {
+      const q = e.target.value.toLowerCase().trim();
+      tabla.querySelectorAll('tbody tr').forEach(function (tr, i) {
+        const f = orden[i]; if (!f) return;
+        const p = prods.get(f.sku) || {};
+        const txt = (f.sku + ' ' + (p.asin || '') + ' ' + (p.titulo || '')).toLowerCase();
+        tr.style.display = !q || txt.indexOf(q) >= 0 ? '' : 'none';
+      });
+    });
+    return caja;
+  }
+
   /* ===================== pintado ===================== */
 
   function pintar() {
@@ -2067,7 +2243,7 @@ window.SEED = function () {
     const r = Calc.rentabilidad({ desde: rango.desde, hasta: rango.hasta });
     const rPrev = Calc.rentabilidad({ desde: prev.desde, hasta: prev.hasta });
 
-    raiz.appendChild(bloqueKpis(rango, r, rPrev, v, vPrev));
+    raiz.appendChild(bloqueBaldosas());
     raiz.appendChild(bloquePeriodo(rango));
 
     if (!v.lineas && !r.ppc) {
@@ -2093,6 +2269,8 @@ window.SEED = function () {
     raiz.appendChild(UI.el(`<p class="sec-note" style="margin:12px 0 0">
       El PPC por SKU procede del informe de palabras clave (el único con SKU en todas sus filas), mientras que
       el total del periodo usa el informe de campañas: por eso ambas cifras pueden diferir ligeramente.</p>`));
+
+    raiz.appendChild(bloqueTablaProductos(prods, filas, rango));
 
     raiz.appendChild(UI.el('<h2>Cuenta de resultados</h2>'));
     raiz.appendChild(bloqueCascada(r));
