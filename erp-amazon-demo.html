@@ -267,8 +267,6 @@ table.tbl input[type=number]{width:82px}
 .bald .mas{border-top:1px solid var(--line-2);text-align:center;padding:7px;font-size:12px;
   color:var(--accent-2);font-weight:600;margin-top:auto}
 .bald .mas:hover{background:var(--sunken)}
-.bald .detalle{display:none;padding:2px 15px 12px;border-top:1px solid var(--line-2)}
-.bald.abierta .detalle{display:block}
 
 /* Miniatura del producto en la tabla: sin fotos, una pastilla con la inicial
    de la familia mantiene la fila reconocible de un vistazo. */
@@ -281,6 +279,35 @@ table.tbl input[type=number]{width:82px}
 .mini-prod .nom{font-size:12.5px;font-weight:600;line-height:1.3;margin:1px 0}
 .mini-prod .eco{font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 .mini-prod .eco .al{color:var(--crit);font-weight:600}
+
+/* Desglose del periodo: la baldosa se convierte en la lista completa, con la
+   cabecera en blanco y una ✕ para volver, sin sacar al usuario de la portada. */
+.bald .cerrar{display:none;position:absolute;top:9px;right:10px;background:none;border:none;
+  font-size:16px;line-height:1;color:var(--muted);cursor:pointer;padding:3px 6px;border-radius:4px}
+.bald .cerrar:hover{color:var(--crit);background:var(--sunken)}
+.bald .cab{position:relative}
+.bald .lista{display:none}
+.bald.det{grid-row:span 2;z-index:5;box-shadow:0 8px 28px rgba(16,24,40,.18);cursor:default}
+.bald.det .cue,.bald.det .par,.bald.det .mas{display:none}
+.bald.det .lista{display:block;max-height:60vh;overflow-y:auto}
+.bald.det .cerrar{display:block}
+.bald.det .cab{background:var(--surface);color:var(--ink);border-bottom:1px solid var(--line)}
+.bald.det .cab span{color:var(--muted);opacity:1}
+.bald .lista .fl{display:flex;justify-content:space-between;gap:12px;align-items:baseline;
+  padding:6px 15px;border-bottom:1px solid var(--line-2);font-size:12.5px;font-variant-numeric:tabular-nums}
+.bald .lista .fl span{color:var(--ink-2)}
+.bald .lista .fl b{font-weight:600;white-space:nowrap}
+.bald .lista .fl.fuerte{font-weight:700;background:var(--sunken)}
+.bald .lista .fl.fuerte span{color:var(--ink);font-weight:700}
+.bald .lista .fl.ratio span{color:var(--muted)}
+.bald .lista .fl:last-child{border-bottom:none}
+
+/* Fila de totales de la tabla de productos. */
+table.tbl tr.fila-total td{background:var(--sunken);border-top:2px solid var(--line);
+  border-bottom:none;font-weight:700;position:sticky;bottom:0}
+
+/* Las cifras nunca se parten en dos líneas: el importe y su símbolo van juntos. */
+table.tbl td.num,table.tbl tr.fila-total td{white-space:nowrap}
 </style>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23111820'/><text x='16' y='23' font-family='sans-serif' font-size='17' font-weight='700' fill='%23b3351d' text-anchor='middle'>K</text></svg>">
 </head>
@@ -2064,7 +2091,8 @@ window.SEED = function () {
   /* ===================== baldosas de período ===================== */
   /* Cinco ventanas temporales a la vez, cada una con su cascada resumida. Se
      ven de un vistazo sin cambiar de selector; al pulsar una, el resto de la
-     portada pasa a hablar de ese periodo. */
+     portada pasa a hablar de ese periodo. «Más» convierte la baldosa en el
+     desglose completo del periodo sin salir de la portada. */
   const VENTANAS = [
     ['hoy', 'Hoy', 'b1'], ['ayer', 'Ayer', 'b2'], ['d7', 'Últimos 7 días', 'b3'],
     ['d30', 'Últimos 30 días', 'b4'], ['mes', 'Este mes', 'b5'],
@@ -2080,6 +2108,77 @@ window.SEED = function () {
     return '<span class="dlt ' + c + '">' + F.delta(v) + (suf === false ? '' : ' vs. anterior') + '</span>';
   }
 
+  /* Gastos indirectos del periodo. Hoy DB().gastos está vacío porque falta el
+     módulo que los da de alta: el cálculo ya está hecho, así que en cuanto
+     existan aparecen aquí y en la ganancia neta. */
+  function gastosDelPeriodo(dias) {
+    const g = A.DB().gastos || [];
+    const mensual = g.reduce(function (t, x) {
+      const imp = Number(x.importe) || 0;
+      return t + (x.periodicidad === 'anual' ? imp / 12 : imp);
+    }, 0);
+    return mensual * (dias / 30);
+  }
+
+  /* Devoluciones del periodo: unidades, cuántas vuelven a stock y el coste de
+     las que no (mercancía perdida). Las revendibles no son pérdida. */
+  function devolucionesPeriodo(desde, hasta) {
+    const m = new Map();
+    let uds = 0, revend = 0, coste = 0;
+    (A.DB().devoluciones || []).forEach(function (d) {
+      if (d.fecha < desde || d.fecha > hasta) return;
+      const n = d.unidades || 1;
+      const c = d.revendible ? 0 : Calc.coste(d.sku, d.fecha) * n;
+      uds += n; revend += d.revendible ? n : 0; coste += c;
+      const a = m.get(d.sku) || { uds: 0, revend: 0, coste: 0 };
+      a.uds += n; a.revend += d.revendible ? n : 0; a.coste += c;
+      m.set(d.sku, a);
+    });
+    return { porSku: m, uds: uds, revend: revend, coste: coste };
+  }
+
+  /* Desglose completo de un periodo: la lista que se ve al pulsar «Más». */
+  function detallePeriodo(rango) {
+    const v = Q.ventas({ desde: rango.desde, hasta: rango.hasta });
+    const r = Calc.rentabilidad({ desde: rango.desde, hasta: rango.hasta });
+    const dv = devolucionesPeriodo(rango.desde, rango.hasta);
+    const gastos = gastosDelPeriodo(rango.dias);
+    const tarifasAmz = r.referral + r.fba;
+    const neta = r.beneficio - gastos;
+    const pago = v.bruto - tarifasAmz - r.ppc - r.devoluciones;
+    const roi = r.cogs ? neta / r.cogs : null;
+
+    const sinDato = function (motivo) { return '<span class="mini" title="' + A.esc(motivo) + '">sin dato</span>'; };
+    const menosSi = function (n) { return n ? '<span class="neg">' + menos(n) + '</span>' : F.eur(0); };
+
+    return [
+      ['Ventas', F.eur(v.bruto), 'fuerte'],
+      ['Unidades', F.n(v.unidades), ''],
+      ['Pedidos', F.n(v.pedidos), ''],
+      ['Reembolsos', dv.uds ? F.n(dv.uds) : '0', ''],
+      ['Promo', sinDato('Los descuentos y cupones llegan con el informe de transacciones'), ''],
+      ['Costos publicitarios', menosSi(r.ppc), ''],
+      ['Envío', menosSi(r.logistica), ''],
+      ['Envoltorio', sinDato('El envoltorio de regalo llega con el informe de transacciones'), ''],
+      ['Coste de reembolso', menosSi(dv.coste), ''],
+      ['Tarifas de Amazon', menosSi(tarifasAmz), ''],
+      ['Coste de los bienes', menosSi(r.cogs), ''],
+      ['IVA', menosSi(r.iva), ''],
+      ['Ganancia bruta', F.eur(r.brutoAntesPpc), 'fuerte'],
+      ['Gastos indirectos', gastos ? menosSi(gastos) : sinDato('Aún no hay gastos indirectos dados de alta'), ''],
+      ['Ganancia neta', '<span class="' + (neta < 0 ? 'neg' : 'pos') + '">' + F.eur(neta) + '</span>', 'fuerte'],
+      ['Pago estimado', F.eur(pago), ''],
+      ['TACOS', pctSeguro(r.tacos), 'ratio'],
+      ['ACOS', pctSeguro(r.acos), 'ratio'],
+      ['% reembolsos', v.unidades ? F.pct(dv.uds / v.unidades) : '—', 'ratio'],
+      ['Devoluciones aptas para la venta', dv.uds ? F.pct(dv.revend / dv.uds) : '—', 'ratio'],
+      ['Margen', pctSeguro(r.ventasNetas ? neta / r.ventasNetas : null), 'ratio'],
+      ['ROI', pctSeguro(roi), 'ratio'],
+      ['Beneficio por unidad', v.unidades ? F.eur(neta / v.unidades) : '—', 'ratio'],
+      ['Sesiones', sinDato('Las visitas llegan con el informe de negocio de Seller Central'), ''],
+    ];
+  }
+
   function bloqueBaldosas() {
     const cajas = VENTANAS.map(function (w) {
       const k = w[0], titulo = w[1], color = w[2];
@@ -2089,15 +2188,21 @@ window.SEED = function () {
       const vPrev = Q.ventas({ desde: prev.desde, hasta: prev.hasta });
       const r = Calc.rentabilidad({ desde: rango.desde, hasta: rango.hasta });
       const rPrev = Calc.rentabilidad({ desde: prev.desde, hasta: prev.hasta });
-      const nDev = (A.DB().devoluciones || []).filter(function (d) {
-        return d.fecha >= rango.desde && d.fecha <= rango.hasta;
-      }).length;
-      const tono = r.beneficio < 0 ? 'neg' : 'pos';
+      const dv = devolucionesPeriodo(rango.desde, rango.hasta);
+      const gastos = gastosDelPeriodo(rango.dias);
+      const neta = r.beneficio - gastos;
+      const pago = v.bruto - (r.referral + r.fba) - r.ppc - r.devoluciones;
+      const tono = neta < 0 ? 'neg' : 'pos';
+
+      const lista = detallePeriodo(rango).map(function (f) {
+        return '<div class="fl ' + f[2] + '"><span>' + f[0] + '</span><b>' + f[1] + '</b></div>';
+      }).join('');
 
       return '' +
         '<div class="bald ' + (k === preset ? 'on' : '') + '" data-p="' + k + '" style="--bc:var(--' + color + ')"' +
         '     role="button" tabindex="0" aria-label="Ver el periodo ' + A.esc(titulo) + '">' +
-        '<div class="cab"><b>' + A.esc(titulo) + '</b><span>' + rotuloRango(rango) + '</span></div>' +
+        '<div class="cab"><b>' + A.esc(titulo) + '</b><span>' + rotuloRango(rango) + '</span>' +
+        '<button class="cerrar" data-cerrar="1" aria-label="Cerrar el desglose">✕</button></div>' +
         '<div class="cue">' +
         '<div class="lb">Ventas</div>' +
         '<div class="gr">' + F.eur(v.bruto) + '</div>' +
@@ -2105,30 +2210,18 @@ window.SEED = function () {
         '</div>' +
         '<div class="par">' +
         '<div><div class="lb">Pedidos / Unidades</div><b>' + F.n(v.pedidos) + ' / ' + F.n(v.unidades) + '</b></div>' +
-        '<div><div class="lb">Devoluciones</div><b>' + (nDev ? F.n(nDev) + ' · ' + F.eur(r.devoluciones, 0) : '0') + '</b></div>' +
+        '<div><div class="lb">Reembolsos</div><b>' + (dv.uds || 0) + '</b></div>' +
         '</div>' +
         '<div class="par">' +
-        '<div><div class="lb">Publicidad</div><b class="neg">' + (r.ppc ? menos(r.ppc) : F.eur(0)) + '</b></div>' +
-        '<div><div class="lb">Tarifas Amazon</div><b class="neg">' + (r.tarifas ? menos(r.tarifas) : F.eur(0)) + '</b></div>' +
+        '<div><div class="lb">Costos publ.</div><b class="neg">' + (r.ppc ? menos(r.ppc) : F.eur(0)) + '</b></div>' +
+        '<div><div class="lb">Pago estimado</div><b>' + F.eur(pago) + '</b></div>' +
         '</div>' +
         '<div class="par">' +
         '<div><div class="lb">Ganancia bruta</div><b>' + F.eur(r.brutoAntesPpc) + '</b></div>' +
-        '<div><div class="lb">Ganancia neta</div><b class="' + tono + '">' + F.eur(r.beneficio) + '</b>' +
-        dlt(variacion(r.beneficio, rPrev.beneficio), false) + '</div>' +
+        '<div><div class="lb">Ganancia neta</div><b class="' + tono + '">' + F.eur(neta) + '</b>' +
+        dlt(variacion(neta, rPrev.beneficio), false) + '</div>' +
         '</div>' +
-        '<div class="detalle cascada">' +
-        '<div class="ln"><span>Ventas sin IVA</span><span>' + F.eur(r.ventasNetas) + '</span></div>' +
-        '<div class="ln"><span>Coste de los bienes</span><span class="neg">' + menos(r.cogs) + '</span></div>' +
-        '<div class="ln"><span>Comisión de Amazon</span><span class="neg">' + menos(r.referral) + '</span></div>' +
-        '<div class="ln"><span>Logística FBA</span><span class="neg">' + menos(r.fba) + '</span></div>' +
-        '<div class="ln"><span>Envío y entrada</span><span class="neg">' + menos(r.logistica) + '</span></div>' +
-        '<div class="ln"><span>Publicidad</span><span class="neg">' + menos(r.ppc) + '</span></div>' +
-        '<div class="ln tot"><span>Beneficio</span><span class="' + tono + '">' + F.eur(r.beneficio) + '</span></div>' +
-        '<div class="ln"><span>Margen</span><span>' + pctSeguro(r.margen) + '</span></div>' +
-        '<div class="ln"><span>TACOS</span><span>' + pctSeguro(r.tacos) + '</span></div>' +
-        '<div class="ln"><span>ACOS de equilibrio</span><span>' + pctSeguro(r.acosEquilibrio) + '</span></div>' +
-        '<div class="ln"><span>Beneficio por unidad</span><span>' + (v.unidades ? F.eur(r.beneficio / v.unidades) : '—') + '</span></div>' +
-        '</div>' +
+        '<div class="lista">' + lista + '</div>' +
         '<div class="mas" data-mas="1">Más</div>' +
         '</div>';
     }).join('');
@@ -2136,17 +2229,25 @@ window.SEED = function () {
     const el = UI.el('<div class="baldosas">' + cajas + '</div>');
     el.querySelectorAll('.bald').forEach(function (b) {
       const activar = function (e) {
-        if (e.target && e.target.dataset && e.target.dataset.mas) {
+        const t = e.target;
+        if (t && t.dataset && t.dataset.mas) {          // abrir el desglose
           e.stopPropagation();
-          b.classList.toggle('abierta');
-          e.target.textContent = b.classList.contains('abierta') ? 'Menos' : 'Más';
+          el.querySelectorAll('.bald.det').forEach(function (o) { if (o !== b) o.classList.remove('det'); });
+          b.classList.add('det');
           return;
         }
+        if (t && t.dataset && t.dataset.cerrar) {       // cerrarlo
+          e.stopPropagation();
+          b.classList.remove('det');
+          return;
+        }
+        if (b.classList.contains('det')) return;        // dentro del desglose no se navega
         preset = b.dataset.p;
         pintar();
       };
       b.addEventListener('click', activar);
       b.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { b.classList.remove('det'); return; }
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activar(e); }
       });
     });
@@ -2154,75 +2255,251 @@ window.SEED = function () {
   }
 
   /* ===================== tabla de productos del período ===================== */
-  function bloqueTablaProductos(prods, filas, rango) {
+  let tpAgrupar = 'sku';       // sku | asin | familia
+  let tpDensidad = 'todas';    // todas | esenciales
+
+  const CAMPOS_SUMA = ['unidades', 'brutas', 'netas', 'cogs', 'referral', 'fba', 'logistica',
+    'devol', 'ppc', 'ventasPpc', 'devUds', 'devRevend', 'costeDev', 'promo'];
+
+  function agruparFilas(filas, prods, modo) {
+    if (modo === 'sku') return filas;
+    const m = new Map();
+    filas.forEach(function (f) {
+      const p = prods.get(f.sku) || {};
+      const clave = modo === 'asin' ? (p.asin || f.sku) : (p.familia || 'sin familia');
+      let a = m.get(clave);
+      if (!a) {
+        a = { sku: clave, agrupa: modo, nSkus: 0, skus: [] };
+        CAMPOS_SUMA.forEach(function (k) { a[k] = 0; });
+        m.set(clave, a);
+      }
+      CAMPOS_SUMA.forEach(function (k) { a[k] += f[k] || 0; });
+      a.nSkus++; a.skus.push(f.sku);
+    });
+    const out = [];
+    m.forEach(function (a) {
+      a.tarifas = a.referral + a.fba + a.logistica;
+      a.antesPpc = a.netas - a.cogs - a.tarifas - a.devol;
+      a.beneficio = a.antesPpc - a.ppc;
+      a.tacos = a.brutas ? a.ppc / a.brutas : (a.ppc > 0 ? Infinity : null);
+      out.push(a);
+    });
+    return out;
+  }
+
+  function bloqueTablaProductos(prods, filasBase, rango) {
+    const dv = devolucionesPeriodo(rango.desde, rango.hasta);
+    filasBase.forEach(function (f) {
+      const d = dv.porSku.get(f.sku) || { uds: 0, revend: 0, coste: 0 };
+      f.devUds = d.uds; f.devRevend = d.revend; f.costeDev = d.coste;
+      f.promo = f.promo || 0;   // los importes promocionales llegan con el informe de transacciones
+    });
+
+    const filas = agruparFilas(filasBase, prods, tpAgrupar);
     const totalVentas = A.sum(filas, function (f) { return f.brutas; });
+    const gastosTot = gastosDelPeriodo(rango.dias);
+    const hayPromo = filas.some(function (f) { return f.promo > 0; });
+    filas.forEach(function (f) {
+      f.gastos = totalVentas ? gastosTot * (f.brutas / totalVentas) : 0;
+      f.neta = f.beneficio - f.gastos;
+      f.tarifasAmz = f.referral + f.fba;
+      f.envio = f.logistica;
+      f.pctReemb = f.unidades ? f.devUds / f.unidades : null;
+      f.aptas = f.devUds ? f.devRevend / f.devUds : null;
+      /* Lo que Amazon acabará transfiriendo: venta menos sus comisiones, la
+         publicidad y los reembolsos. No descuenta coste ni logística propia. */
+      f.pago = f.brutas - f.tarifasAmz - f.ppc - f.devol;
+      f.margenNeto = f.netas ? f.neta / f.netas : null;
+      f.roi = f.cogs ? f.neta / f.cogs : null;
+    });
+
     const inicial = function (p) { return (p && p.familia ? p.familia[0] : '·').toUpperCase(); };
     const stockDe = function (sku) { const s = Q.stock(sku, null); return s.disponible + s.transito; };
+    const eur2 = function (n) { return (n == null || !isFinite(n)) ? '—' : F.eur(n, 2); };
+    const neg = function (n) { return n ? '<span class="neg">' + menos(n) + '</span>' : '<span class="mini">' + F.eur(0) + '</span>'; };
 
-    const cols = [
-      {
-        k: 'sku', t: 'Producto', cls: 'wrap',
-        sv: function (f) { return (prods.get(f.sku) || {}).titulo || f.sku; },
-        r: function (f) {
-          const p = prods.get(f.sku) || {};
-          const st = stockDe(f.sku);
-          const cst = Calc.coste(f.sku, rango.hasta);
-          const precio = p.porPais && p.porPais.ES ? F.eur(p.porPais.ES.precio) : '—';
-          return '<div class="mini-prod">' +
-            '<div class="ph">' + A.esc(inicial(p)) + '</div>' +
-            '<div class="tx">' +
-            '<div class="ref">' + A.esc(p.asin || '—') + ' · SKU ' + A.esc(f.sku) + '</div>' +
-            '<div class="nom">' + A.esc((p.titulo || '(sin ficha de producto)').slice(0, 58)) + '</div>' +
-            '<div class="eco">' + precio +
-            ' · COGS: ' + (cst ? F.eur(cst) : '<span class="al">sin coste</span>') +
-            ' · Stock: <span class="' + (st < 30 ? 'al' : '') + '">' + F.n(st) + '</span></div>' +
-            '</div></div>';
-        },
+    const colProducto = {
+      k: 'sku', t: 'Producto', cls: 'wrap', esencial: true,
+      sv: function (f) { return (prods.get(f.sku) || {}).titulo || f.sku; },
+      r: function (f) {
+        if (f.agrupa) {
+          return '<div class="mini-prod"><div class="ph">' + A.esc(String(f.sku).slice(0, 1).toUpperCase()) + '</div>' +
+            '<div class="tx"><div class="ref">' + (f.agrupa === 'asin' ? 'ASIN' : 'Familia') + '</div>' +
+            '<div class="nom">' + A.esc(f.sku) + '</div>' +
+            '<div class="eco">' + F.n(f.nSkus) + ' SKU agrupados</div></div></div>';
+        }
+        const p = prods.get(f.sku) || {};
+        const st = stockDe(f.sku);
+        const cst = Calc.coste(f.sku, rango.hasta);
+        const precio = p.porPais && p.porPais.ES ? F.eur(p.porPais.ES.precio) : '—';
+        return '<div class="mini-prod">' +
+          '<div class="ph">' + A.esc(inicial(p)) + '</div>' +
+          '<div class="tx">' +
+          '<div class="ref">' + A.esc(p.asin || '—') + ' · SKU ' + A.esc(f.sku) + '</div>' +
+          '<div class="nom">' + A.esc((p.titulo || '(sin ficha de producto)').slice(0, 58)) + '</div>' +
+          '<div class="eco">' + precio +
+          ' · COGS: ' + (cst ? F.eur(cst) : '<span class="al">sin coste</span>') +
+          ' · Inventario FBA: <span class="' + (st < 30 ? 'al' : '') + '">' + F.n(st) + '</span></div>' +
+          '</div></div>';
       },
-      { k: 'unidades', t: 'Uds', num: true, r: function (f) { return F.n(f.unidades); } },
-      { k: 'brutas', t: 'Ventas', num: true, r: function (f) { return F.eur(f.brutas, 0); } },
+    };
+
+    /* El orden reproduce el del panel de Sellerboard para no perder el hábito de
+       lectura; `esencial` marca las que quedan en la vista compacta. */
+    const TODAS = [
+      colProducto,
+      { k: 'unidades', t: 'Unidades', num: true, esencial: true, r: function (f) { return F.n(f.unidades); } },
+      { k: 'devUds', t: 'Reembolsos', num: true, r: function (f) { return f.devUds ? F.n(f.devUds) : '<span class="mini">0</span>'; } },
+      { k: 'brutas', t: 'Ventas', num: true, esencial: true, r: function (f) { return F.eur(f.brutas, 2); } },
       {
         k: 'cuota', t: '% del total', num: true, sv: function (f) { return f.brutas; },
         r: function (f) { return totalVentas ? F.pct(f.brutas / totalVentas) : '—'; },
       },
-      { k: 'ppc', t: 'Publicidad', num: true, r: function (f) { return f.ppc ? '<span class="neg">' + menos(f.ppc) + '</span>' : '—'; } },
-      { k: 'devol', t: 'Devoluciones', num: true, r: function (f) { return f.devol ? '<span class="neg">' + menos(f.devol) + '</span>' : '—'; } },
-      { k: 'cogs', t: 'Coste bienes', num: true, r: function (f) { return '<span class="neg">' + menos(f.cogs) + '</span>'; } },
-      { k: 'tarifas', t: 'Tarifas Amazon', num: true, r: function (f) { return '<span class="neg">' + menos(f.tarifas) + '</span>'; } },
-      { k: 'antesPpc', t: 'Gan. bruta', num: true, r: function (f) { return F.eur(f.antesPpc, 0); } },
       {
-        k: 'beneficio', t: 'Gan. neta', num: true,
-        r: function (f) { return '<b class="' + (f.beneficio < 0 ? 'neg' : 'pos') + '">' + F.eur(f.beneficio, 0) + '</b>'; },
+        k: 'promo', t: 'Promo', num: true,
+        r: function (f) {
+          if (f.promo) return neg(f.promo);
+          return hayPromo ? '<span class="mini">' + F.eur(0) + '</span>'
+            : '<span class="mini" title="Los descuentos y cupones llegan con el informe de transacciones">sin dato</span>';
+        },
       },
-      { k: 'margen', t: 'Margen', num: true, r: function (f) { return pctSeguro(f.margen); } },
+      { k: 'ppc', t: 'Publicidad', num: true, esencial: true, r: function (f) { return neg(f.ppc); } },
+      {
+        k: 'pctReemb', t: '% reembolsos', num: true,
+        r: function (f) {
+          if (f.pctReemb == null) return '—';
+          return '<span class="' + (f.pctReemb > 0.05 ? 'neg' : '') + '">' + F.pct(f.pctReemb) + '</span>';
+        },
+      },
+      {
+        k: 'aptas', t: 'Aptas para la venta', num: true,
+        r: function (f) { return f.aptas == null ? '<span class="mini">—</span>' : F.pct(f.aptas); },
+      },
+      { k: 'costeDev', t: 'Coste de reembolso', num: true, r: function (f) { return neg(f.costeDev); } },
+      { k: 'tarifasAmz', t: 'Tarifas de Amazon', num: true, esencial: true, r: function (f) { return neg(f.tarifasAmz); } },
+      { k: 'cogs', t: 'Coste de los bienes', num: true, esencial: true, r: function (f) { return neg(f.cogs); } },
+      { k: 'envio', t: 'Envío', num: true, r: function (f) { return neg(f.envio); } },
+      { k: 'antesPpc', t: 'Ganancia bruta', num: true, r: function (f) { return eur2(f.antesPpc); } },
+      {
+        k: 'neta', t: 'Ganancia neta', num: true, esencial: true,
+        r: function (f) { return '<b class="' + (f.neta < 0 ? 'neg' : 'pos') + '">' + eur2(f.neta) + '</b>'; },
+      },
+      { k: 'pago', t: 'Pago estimado', num: true, r: function (f) { return eur2(f.pago); } },
+      {
+        k: 'gastos', t: 'Gastos', num: true,
+        r: function (f) {
+          return f.gastos ? neg(f.gastos)
+            : '<span class="mini" title="Aún no hay gastos indirectos dados de alta">sin dato</span>';
+        },
+      },
+      {
+        k: 'margenNeto', t: 'Margen', num: true, esencial: true,
+        r: function (f) {
+          if (f.margenNeto == null) return '—';
+          const c = f.margenNeto < 0 ? 'neg' : f.margenNeto >= 0.15 ? 'pos' : '';
+          return '<span class="' + c + '">' + F.pct(f.margenNeto) + '</span>';
+        },
+      },
+      { k: 'roi', t: 'ROI', num: true, r: function (f) { return pctSeguro(f.roi); } },
       {
         k: 'tacos', t: 'TACOS', num: true,
         r: function (f) {
           if (f.tacos == null) return '—';
-          const obj = Q.ppcConfig(f.sku, 'ES').tacosObjetivo;
+          const obj = Q.ppcConfig(f.agrupa ? f.skus[0] : f.sku, 'ES').tacosObjetivo;
           return '<span class="' + (f.tacos > obj ? 'neg' : '') + '">' + pctSeguro(f.tacos) + '</span>';
         },
       },
     ];
-
+    const cols = tpDensidad === 'todas' ? TODAS : TODAS.filter(function (c) { return c.esencial; });
     const orden = filas.slice().sort(function (a, b) { return b.brutas - a.brutas; });
+
+    /* Fila de totales: permite comprobar de un vistazo que la tabla cuadra con
+       la cuenta de resultados del periodo. */
+    const tot = {};
+    ['unidades', 'devUds', 'brutas', 'promo', 'ppc', 'costeDev', 'tarifasAmz', 'cogs', 'envio',
+      'antesPpc', 'neta', 'pago', 'gastos', 'netas'].forEach(function (k) {
+        tot[k] = A.sum(orden, function (f) { return f[k] || 0; });
+      });
+    tot.margenNeto = tot.netas ? tot.neta / tot.netas : null;
+
     const caja = UI.el('<div></div>');
-    caja.appendChild(UI.el('<div class="toolbar" style="margin:24px 0 10px">' +
+    const barra = UI.el('<div class="toolbar" style="margin:24px 0 10px">' +
       '<h2 style="margin:0">Productos</h2>' +
       '<span class="mini">' + F.n(orden.length) + ' con actividad · ' + rotuloRango(rango) + '</span>' +
       '<span class="sp"></span>' +
-      '<input type="search" id="bpFiltro" placeholder="Filtrar por SKU, ASIN o título…">' +
-      '</div>'));
-    const tabla = UI.tabla(cols, orden, { vacio: 'Ningún producto ha tenido ventas ni gasto en este periodo.' });
-    caja.appendChild(tabla);
+      '<span class="mini">Agrupar por</span>' +
+      '<div class="seg" id="tpGrupo">' +
+      '<button data-g="sku" class="' + (tpAgrupar === 'sku' ? 'on' : '') + '">SKU</button>' +
+      '<button data-g="asin" class="' + (tpAgrupar === 'asin' ? 'on' : '') + '">ASIN</button>' +
+      '<button data-g="familia" class="' + (tpAgrupar === 'familia' ? 'on' : '') + '">Familia</button>' +
+      '</div>' +
+      '<div class="seg" id="tpDens">' +
+      '<button data-d="esenciales" class="' + (tpDensidad === 'esenciales' ? 'on' : '') + '">Compacta</button>' +
+      '<button data-d="todas" class="' + (tpDensidad === 'todas' ? 'on' : '') + '">Detallada</button>' +
+      '</div>' +
+      '<input type="search" id="bpFiltro" placeholder="Filtrar…" style="min-width:140px">' +
+      '<button class="btn sec xs" id="bpCsv">Exportar CSV</button>' +
+      '</div>');
+    caja.appendChild(barra);
 
-    caja.querySelector('#bpFiltro').addEventListener('input', function (e) {
+    const tabla = UI.tabla(cols, orden, { vacio: 'Ningún producto ha tenido ventas ni gasto en este periodo.' });
+    const tbody = tabla.querySelector('tbody');
+    if (orden.length) {
+      const rojas = ['ppc', 'cogs', 'tarifasAmz', 'envio', 'costeDev', 'gastos', 'promo'];
+      const tds = cols.map(function (c) {
+        if (c.k === 'sku') return '<td class="strong">TOTAL · ' + F.n(orden.length) + '</td>';
+        if (c.k === 'cuota') return '<td class="num strong">100 %</td>';
+        if (c.k === 'margenNeto') return '<td class="num strong">' + (tot.margenNeto == null ? '—' : F.pct(tot.margenNeto)) + '</td>';
+        if (tot[c.k] === undefined) return '<td></td>';
+        const v = tot[c.k];
+        const rojo = rojas.indexOf(c.k) >= 0;
+        if (!v) return '<td class="num strong mini">—</td>';
+        const txt = (c.k === 'unidades' || c.k === 'devUds') ? F.n(v) : (rojo ? menos(v) : F.eur(v, 2));
+        return '<td class="num strong' + (rojo ? ' neg' : '') + '">' + txt + '</td>';
+      }).join('');
+      tbody.appendChild(UI.el('<tr class="fila-total">' + tds + '</tr>'));
+    }
+    caja.appendChild(tabla);
+    caja.appendChild(UI.el('<p class="sec-note" style="margin:8px 0 0">' +
+      '«Ganancia bruta» es el beneficio antes de publicidad; «Ganancia neta» ya descuenta publicidad y gastos. ' +
+      '«Pago estimado» es lo que Amazon transferirá (venta menos sus comisiones, publicidad y reembolsos), sin ' +
+      'descontar coste de producto ni logística propia. «Coste de reembolso» es la mercancía devuelta que no vuelve ' +
+      'a stock. Lo marcado «sin dato» necesita el informe de transacciones o el módulo de gastos indirectos.' +
+      '</p>'));
+
+    barra.querySelectorAll('#tpGrupo button').forEach(function (b) {
+      b.addEventListener('click', function () { tpAgrupar = b.dataset.g; pintar(); });
+    });
+    barra.querySelectorAll('#tpDens button').forEach(function (b) {
+      b.addEventListener('click', function () { tpDensidad = b.dataset.d; pintar(); });
+    });
+    barra.querySelector('#bpFiltro').addEventListener('input', function (e) {
       const q = e.target.value.toLowerCase().trim();
       tabla.querySelectorAll('tbody tr').forEach(function (tr, i) {
-        const f = orden[i]; if (!f) return;
+        const f = orden[i];
+        if (!f) return;                       // la fila de totales se queda siempre
         const p = prods.get(f.sku) || {};
         const txt = (f.sku + ' ' + (p.asin || '') + ' ' + (p.titulo || '')).toLowerCase();
         tr.style.display = !q || txt.indexOf(q) >= 0 ? '' : 'none';
+      });
+    });
+    barra.querySelector('#bpCsv').addEventListener('click', function () {
+      A.Tareas.run('Exportar productos del periodo', function () {
+        const datos = orden.map(function (f) {
+          const p = prods.get(f.sku) || {};
+          return {
+            SKU: f.sku, ASIN: p.asin || '', Producto: p.titulo || '',
+            Unidades: f.unidades, Reembolsos: f.devUds, Ventas: f.brutas,
+            'Ventas sin IVA': f.netas, Promo: f.promo, Publicidad: f.ppc,
+            'Porcentaje reembolsos': f.pctReemb, 'Aptas para la venta': f.aptas,
+            'Coste de reembolso': f.costeDev, 'Tarifas de Amazon': f.tarifasAmz,
+            'Coste de los bienes': f.cogs, 'Envio': f.envio,
+            'Ganancia bruta': f.antesPpc, 'Ganancia neta': f.neta,
+            'Pago estimado': f.pago, Gastos: f.gastos, Margen: f.margenNeto, ROI: f.roi, TACOS: f.tacos,
+          };
+        });
+        A.CSV.descargar('productos-' + rango.desde + '_' + rango.hasta + '.csv', A.CSV.aCsv(datos));
+        return datos.length + ' filas exportadas';
       });
     });
     return caja;
