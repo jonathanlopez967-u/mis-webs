@@ -1127,6 +1127,62 @@ window.SEED = function () {
     },
 
     /* Cuenta de resultados real de un periodo (opcionalmente por SKU y/o país). */
+    /* ---------- gastos del negocio ----------
+       Fijos: cuotas, gestoría, software, sueldos… se reparten por los días que
+       el gasto solapa con el periodo consultado.
+       Variables: embalaje, etiquetas o comisiones que escalan con las ventas.
+       Si la consulta va filtrada por SKU o mercado, los gastos que no tienen
+       ese ámbito se prorratean por la cuota de venta (`f.cuota`). */
+    gastos(f) {
+      f = f || {};
+      const desde = f.desde || '0000-01-01', hasta = f.hasta || '9999-12-31';
+      const cuota = f.cuota == null ? 1 : f.cuota;
+      let fijos = 0, variables = 0;
+      const detalle = [];
+      (DB().gastos || []).forEach((g) => {
+        if (g.activo === false) return;
+        if (g.pais && f.pais && g.pais !== f.pais) return;
+        if (g.sku && f.sku && g.sku !== f.sku) return;
+        if (g.hasta && g.hasta < desde) return;
+        if (g.desde && g.desde > hasta) return;
+        const imp0 = Number(g.importe) || 0;
+        let imp = 0;
+        if (g.tipo === 'variable') {
+          if (g.base === 'pedido') imp = imp0 * (f.pedidos || 0);
+          else if (g.base === 'porcentaje') imp = imp0 / 100 * (f.ventas || 0);
+          else imp = imp0 * (f.unidades || 0);
+          variables += imp;
+        } else {
+          if (g.periodicidad === 'puntual') {
+            imp = (g.desde >= desde && g.desde <= hasta) ? imp0 : 0;
+          } else {
+            const mensual = g.periodicidad === 'anual' ? imp0 / 12 : imp0;
+            const ini = g.desde && g.desde > desde ? g.desde : desde;
+            const fin = g.hasta && g.hasta < hasta ? g.hasta : hasta;
+            const dias = Math.max(0, diffDias(ini, fin) + 1);
+            imp = mensual * dias / 30.44;   // media de días por mes
+          }
+          /* Un gasto general repartido sobre una consulta filtrada solo aporta
+             su parte proporcional; uno que ya es de ese SKU o país, entero. */
+          if ((f.sku && !g.sku) || (f.pais && !g.pais)) imp *= cuota;
+          fijos += imp;
+        }
+        if (imp) detalle.push({ id: g.id, concepto: g.concepto, tipo: g.tipo, importe: imp });
+      });
+      detalle.sort((a, b) => b.importe - a.importe);
+      return { fijos, variables, total: fijos + variables, detalle };
+    },
+
+    /* Ventas totales del periodo sin filtrar, memorizadas: hacen falta para
+       prorratear los gastos y el panel pide el mismo rango muchas veces. */
+    _memoVentas: new Map(),
+    limpiarCache() { this._memoVentas.clear(); },
+    _ventasPeriodo(desde, hasta) {
+      const k = (desde || '') + '|' + (hasta || '');
+      if (!this._memoVentas.has(k)) this._memoVentas.set(k, Q.ventas({ desde, hasta }));
+      return this._memoVentas.get(k);
+    },
+
     rentabilidad(f) {
       f = f || {};
       const ped = Q.pedidos(f);
@@ -1153,13 +1209,32 @@ window.SEED = function () {
       } else {
         ppc = sum(ppcFilas, (r) => r.gasto); ventasPpc = sum(ppcFilas, (r) => r.ventas);
       }
-      const devol = f.sku || f.pais ? 0 : sum(DB().devoluciones || [], (d) => (d.fecha >= (f.desde || '') && d.fecha <= (f.hasta || '9999') ? d.importe : 0));
+      const devol = sum(DB().devoluciones || [], (d) => {
+        if (f.desde && d.fecha < f.desde) return 0;
+        if (f.hasta && d.fecha > f.hasta) return 0;
+        if (f.sku && d.sku !== f.sku) return 0;
+        if (f.pais && d.pais !== f.pais) return 0;
+        return d.importe;
+      });
       const tarifas = referral + fba + logistica;
       const brutoAntesPpc = ventasNetas - cogs - tarifas - devol;
-      const beneficio = brutoAntesPpc - ppc;
+      /* Cuota de venta de esta consulta sobre el total del periodo: reparte los
+         gastos generales cuando se pregunta por un SKU o un mercado concreto. */
+      let cuota = 1;
+      if (f.sku || f.pais) {
+        const tot = this._ventasPeriodo(f.desde, f.hasta).bruto;
+        cuota = tot ? ventasBrutas / tot : 0;
+      }
+      const g = this.gastos({
+        desde: f.desde, hasta: f.hasta, sku: f.sku, pais: f.pais,
+        unidades, pedidos: idsPedido.size, ventas: ventasBrutas, cuota,
+      });
+      const beneficio = brutoAntesPpc - ppc - g.total;
       return {
         ventasBrutas, ventasNetas, iva: ivaTot, unidades, pedidos: idsPedido.size,
         cogs, referral, fba, logistica, tarifas, devoluciones: devol,
+        gastosFijos: g.fijos, gastosVariables: g.variables, gastos: g.total, gastosDetalle: g.detalle,
+        brutoAntesGastos: brutoAntesPpc - ppc,
         ppc, ventasPpc, ventasOrganicas: Math.max(0, ventasBrutas - ventasPpc),
         brutoAntesPpc, beneficio,
         margen: ventasNetas ? beneficio / ventasNetas : null,
@@ -1504,7 +1579,8 @@ window.SEED = function () {
 
     pintarNav() {
       const nav = document.getElementById('nav');
-      const grupos = [['Operación', ['dashboard', 'pedidos', 'productos', 'rentabilidad']],
+      const grupos = [['Operación', ['dashboard', 'pedidos', 'productos', 'rentabilidad', 'devoluciones']],
+      ['Finanzas', ['gastos', 'caja', 'moneyback']],
       ['Publicidad', ['ppc', 'searchterms', 'cambios']],
       ['Cadena', ['inventario', 'fees', 'epr']],
       ['Control', ['alertas', 'auditoria', 'datos']]];
@@ -1540,7 +1616,7 @@ window.SEED = function () {
       document.documentElement.dataset.theme = DB().meta.tema || 'light';
       Alertas.recalcular();
       this.pintarNav();
-      Bus.on('datos:cambio', () => { Alertas.recalcular(); this.refrescarNav(); });
+      Bus.on('datos:cambio', () => { Calc.limpiarCache(); Alertas.recalcular(); this.refrescarNav(); });
       Bus.on('alertas:cambio', () => this.refrescarNav());
       Bus.on('cambios:cambio', () => this.refrescarNav());
       const inicial = (location.hash || '').replace('#', '') || 'dashboard';
@@ -2108,16 +2184,14 @@ window.SEED = function () {
     return '<span class="dlt ' + c + '">' + F.delta(v) + (suf === false ? '' : ' vs. anterior') + '</span>';
   }
 
-  /* Gastos indirectos del periodo. Hoy DB().gastos está vacío porque falta el
-     módulo que los da de alta: el cálculo ya está hecho, así que en cuanto
-     existan aparecen aquí y en la ganancia neta. */
-  function gastosDelPeriodo(dias) {
-    const g = A.DB().gastos || [];
-    const mensual = g.reduce(function (t, x) {
-      const imp = Number(x.importe) || 0;
-      return t + (x.periodicidad === 'anual' ? imp / 12 : imp);
-    }, 0);
-    return mensual * (dias / 30);
+  /* Los gastos los calcula el núcleo (respeta vigencias, ámbito por SKU o mercado
+     y las bases variables). Aquí solo se le pasa el periodo y su volumen. */
+  function gastosDelPeriodo(rango) {
+    const v = Q.ventas({ desde: rango.desde, hasta: rango.hasta });
+    return Calc.gastos({
+      desde: rango.desde, hasta: rango.hasta,
+      unidades: v.unidades, pedidos: v.pedidos, ventas: v.bruto, cuota: 1,
+    }).total;
   }
 
   /* Devoluciones del periodo: unidades, cuántas vuelven a stock y el coste de
@@ -2142,9 +2216,9 @@ window.SEED = function () {
     const v = Q.ventas({ desde: rango.desde, hasta: rango.hasta });
     const r = Calc.rentabilidad({ desde: rango.desde, hasta: rango.hasta });
     const dv = devolucionesPeriodo(rango.desde, rango.hasta);
-    const gastos = gastosDelPeriodo(rango.dias);
     const tarifasAmz = r.referral + r.fba;
-    const neta = r.beneficio - gastos;
+    /* Calc.rentabilidad ya descuenta los gastos: aquí no se vuelven a restar. */
+    const neta = r.beneficio;
     const pago = v.bruto - tarifasAmz - r.ppc - r.devoluciones;
     const roi = r.cogs ? neta / r.cogs : null;
 
@@ -2165,7 +2239,7 @@ window.SEED = function () {
       ['Coste de los bienes', menosSi(r.cogs), ''],
       ['IVA', menosSi(r.iva), ''],
       ['Ganancia bruta', F.eur(r.brutoAntesPpc), 'fuerte'],
-      ['Gastos indirectos', gastos ? menosSi(gastos) : sinDato('Aún no hay gastos indirectos dados de alta'), ''],
+      ['Gastos indirectos', r.gastos ? menosSi(r.gastos) : sinDato('Aún no hay gastos indirectos dados de alta'), ''],
       ['Ganancia neta', '<span class="' + (neta < 0 ? 'neg' : 'pos') + '">' + F.eur(neta) + '</span>', 'fuerte'],
       ['Pago estimado', F.eur(pago), ''],
       ['TACOS', pctSeguro(r.tacos), 'ratio'],
@@ -2189,8 +2263,7 @@ window.SEED = function () {
       const r = Calc.rentabilidad({ desde: rango.desde, hasta: rango.hasta });
       const rPrev = Calc.rentabilidad({ desde: prev.desde, hasta: prev.hasta });
       const dv = devolucionesPeriodo(rango.desde, rango.hasta);
-      const gastos = gastosDelPeriodo(rango.dias);
-      const neta = r.beneficio - gastos;
+      const neta = r.beneficio;   // el núcleo ya los ha descontado
       const pago = v.bruto - (r.referral + r.fba) - r.ppc - r.devoluciones;
       const tono = neta < 0 ? 'neg' : 'pos';
 
@@ -2297,7 +2370,7 @@ window.SEED = function () {
 
     const filas = agruparFilas(filasBase, prods, tpAgrupar);
     const totalVentas = A.sum(filas, function (f) { return f.brutas; });
-    const gastosTot = gastosDelPeriodo(rango.dias);
+    const gastosTot = gastosDelPeriodo(rango);
     const hayPromo = filas.some(function (f) { return f.promo > 0; });
     filas.forEach(function (f) {
       f.gastos = totalVentas ? gastosTot * (f.brutas / totalVentas) : 0;
@@ -5059,6 +5132,1219 @@ window.SEED = function () {
       return n ? { n, tono: 'warn' } : null;
     },
     render,
+  });
+})();
+
+
+/* ==================== assets/js/mod/devoluciones.js ==================== */
+/* ==========================================================================
+   DEVOLUCIONES — qué se devuelve, por qué, y cuánto cuesta de verdad.
+   Una devolución cuesta el importe reembolsado, la comisión que Amazon no
+   siempre reintegra y, si la mercancía no vuelve vendible, el coste del
+   producto perdido. Este módulo separa esas tres cosas.
+   ========================================================================== */
+(function () {
+  'use strict';
+  const A = window.App;
+  const F = A.fmt, UI = A.UI, Q = A.Q, Calc = A.Calc;
+
+  let cont = null;
+  let preset = 'd30';
+  let vista = 'sku';        // sku | motivo | pais
+  let filtro = '';
+
+  function datos(rango) {
+    const lista = (A.DB().devoluciones || []).filter((d) =>
+      d.fecha >= rango.desde && d.fecha <= rango.hasta);
+    const v = Q.ventas({ desde: rango.desde, hasta: rango.hasta });
+
+    let uds = 0, importe = 0, revend = 0, costePerdido = 0;
+    const porSku = new Map(), porMotivo = new Map(), porPais = new Map();
+    const acumula = (m, clave, d, coste) => {
+      const a = m.get(clave) || { clave, uds: 0, importe: 0, revend: 0, coste: 0, n: 0 };
+      a.uds += d.unidades || 1; a.importe += d.importe || 0;
+      a.revend += d.revendible ? (d.unidades || 1) : 0;
+      a.coste += coste; a.n++;
+      m.set(clave, a);
+    };
+    lista.forEach((d) => {
+      const n = d.unidades || 1;
+      const coste = d.revendible ? 0 : Calc.coste(d.sku, d.fecha) * n;
+      uds += n; importe += d.importe || 0;
+      revend += d.revendible ? n : 0; costePerdido += coste;
+      acumula(porSku, d.sku, d, coste);
+      acumula(porMotivo, d.motivo || 'sin motivo', d, coste);
+      acumula(porPais, d.pais || '—', d, coste);
+    });
+    return {
+      lista, v, uds, importe, revend, costePerdido,
+      tasa: v.unidades ? uds / v.unidades : null,
+      pctRevend: uds ? revend / uds : null,
+      porSku, porMotivo, porPais,
+    };
+  }
+
+  function tablaAgrupada(d, mapa, titulo) {
+    const filas = [...mapa.values()].sort((a, b) => b.importe - a.importe);
+    const prods = new Map(A.DB().productos.map((p) => [p.sku, p]));
+    const cols = [
+      {
+        k: 'clave', t: titulo, cls: 'wrap',
+        r: (f) => {
+          const p = prods.get(f.clave);
+          if (!p) return A.esc(f.clave);
+          return `<b>${A.esc(f.clave)}</b><div class="mini">${A.esc((p.titulo || '').slice(0, 52))}</div>`;
+        },
+      },
+      { k: 'uds', t: 'Unidades', num: true, r: (f) => F.n(f.uds) },
+      {
+        k: 'tasa', t: 'Tasa', num: true, sv: (f) => f.uds,
+        r: (f) => {
+          if (titulo !== 'Producto') return '<span class="mini">—</span>';
+          const vendidas = Q.ventas({ desde: rangoActual.desde, hasta: rangoActual.hasta, sku: f.clave }).unidades;
+          if (!vendidas) return '<span class="mini">—</span>';
+          const t = f.uds / vendidas;
+          return `<span class="${t > 0.08 ? 'neg' : ''}">${F.pct(t)}</span>`;
+        },
+      },
+      { k: 'importe', t: 'Reembolsado', num: true, r: (f) => `<span class="neg">−${F.eur(f.importe)}</span>` },
+      {
+        k: 'revend', t: 'Vuelven a stock', num: true, sv: (f) => (f.uds ? f.revend / f.uds : 0),
+        r: (f) => {
+          const p = f.uds ? f.revend / f.uds : null;
+          if (p == null) return '—';
+          return `${F.n(f.revend)} <span class="mini">(${F.pct(p)})</span>`;
+        },
+      },
+      { k: 'coste', t: 'Mercancía perdida', num: true, r: (f) => f.coste ? `<span class="neg">−${F.eur(f.coste)}</span>` : '<span class="mini">—</span>' },
+      {
+        k: 'total', t: 'Coste total', num: true, sv: (f) => f.importe + f.coste,
+        r: (f) => `<b class="neg">−${F.eur(f.importe + f.coste)}</b>`,
+      },
+    ];
+    return UI.tabla(cols, filas, { vacio: 'Sin devoluciones en este periodo.' });
+  }
+
+  let rangoActual = null;
+
+  function pintar() {
+    if (!cont) return;
+    cont.innerHTML = '';
+    const raiz = UI.el('<div></div>');
+    const rango = UI.rango(preset);
+    rangoActual = rango;
+    const d = datos(rango);
+
+    raiz.appendChild(UI.el(`<div class="grid g4">
+      ${UI.kpi({
+      label: 'Unidades devueltas', valor: F.n(d.uds),
+      sec: `${F.n(d.lista.length)} devoluciones sobre ${F.n(d.v.unidades)} unidades vendidas`,
+    })}
+      ${UI.kpi({
+      label: 'Tasa de devolución', valor: d.tasa == null ? '—' : F.pct(d.tasa),
+      sec: 'Por encima del 5 % conviene mirar el listado y las fotos',
+      tono: d.tasa == null ? '' : d.tasa > 0.08 ? 'crit' : d.tasa > 0.05 ? 'warn' : 'ok',
+    })}
+      ${UI.kpi({
+      label: 'Importe reembolsado', valor: F.eur(d.importe, 0),
+      sec: `${F.eur(d.costePerdido, 0)} más en mercancía que no vuelve a stock`, tono: d.importe ? 'warn' : '',
+    })}
+      ${UI.kpi({
+      label: 'Vuelven vendibles', valor: d.pctRevend == null ? '—' : F.pct(d.pctRevend),
+      sec: `${F.n(d.revend)} de ${F.n(d.uds)} unidades se pueden volver a vender`,
+      tono: d.pctRevend == null ? '' : d.pctRevend < 0.5 ? 'warn' : 'ok',
+    })}
+    </div>`));
+
+    /* Lectura del dato: qué hacer con él. */
+    if (d.uds) {
+      const peor = [...d.porSku.values()].sort((a, b) => (b.importe + b.coste) - (a.importe + a.coste))[0];
+      const motivo = [...d.porMotivo.values()].sort((a, b) => b.uds - a.uds)[0];
+      const prod = A.DB().productos.find((p) => p.sku === peor.clave);
+      const vendidas = Q.ventas({ desde: rango.desde, hasta: rango.hasta, sku: peor.clave }).unidades;
+      raiz.appendChild(UI.el(`<div class="aviso" style="margin-top:16px"><div>
+        <h4>Dónde duele más</h4>
+        <p><b>${A.esc(peor.clave)}</b>${prod ? ' · ' + A.esc((prod.titulo || '').slice(0, 50)) : ''} se lleva
+        ${F.eur(peor.importe + peor.coste)} entre reembolsos y mercancía perdida
+        (${F.n(peor.uds)} uds devueltas de ${F.n(vendidas)} vendidas${vendidas ? ', un ' + F.pct(peor.uds / vendidas) : ''}).
+        El motivo más repetido del periodo es «${A.esc(motivo.clave)}» con ${F.n(motivo.uds)} unidades.</p>
+        <p>Si el motivo apunta al producto (defectuoso, no era lo esperado), la vía es revisar ficha, fotos y
+        medidas antes que tocar el precio: una devolución cuesta el reembolso más el producto, no solo el margen.</p>
+      </div></div>`));
+    }
+
+    const barra = UI.el(`<div class="toolbar" style="margin-top:18px">
+      <div class="seg" id="dvPer">${[['d7', '7 días'], ['d30', '30 días'], ['mes', 'Este mes'], ['ano', 'Este año'], ['todo', 'Todo']].map(([k, t]) =>
+      `<button data-p="${k}" class="${k === preset ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <div class="seg" id="dvVista">${[['sku', 'Por producto'], ['motivo', 'Por motivo'], ['pais', 'Por mercado']].map(([k, t]) =>
+      `<button data-v="${k}" class="${k === vista ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <span class="sp"></span>
+      <input type="search" id="dvFiltro" placeholder="Filtrar el detalle…" value="${A.esc(filtro)}">
+    </div>`);
+    raiz.appendChild(barra);
+
+    const mapa = vista === 'motivo' ? d.porMotivo : vista === 'pais' ? d.porPais : d.porSku;
+    const titulo = vista === 'motivo' ? 'Motivo' : vista === 'pais' ? 'Mercado' : 'Producto';
+    raiz.appendChild(tablaAgrupada(d, mapa, titulo));
+
+    /* Detalle línea a línea */
+    raiz.appendChild(UI.el('<h2>Detalle</h2>'));
+    const prods = new Map(A.DB().productos.map((p) => [p.sku, p]));
+    const det = d.lista
+      .filter((x) => !filtro || (x.sku + ' ' + (x.motivo || '') + ' ' + (x.pais || '')).toLowerCase().includes(filtro.toLowerCase()))
+      .sort((a, b) => b.fecha.localeCompare(a.fecha))
+      .slice(0, 300);
+    raiz.appendChild(UI.tabla([
+      { k: 'fecha', t: 'Fecha', r: (x) => F.fecha(x.fecha) },
+      { k: 'pais', t: 'Mercado', r: (x) => `<span class="pais">${A.esc(x.pais || '—')}</span>` },
+      {
+        k: 'sku', t: 'Producto', cls: 'wrap',
+        r: (x) => `<b class="mono">${A.esc(x.sku)}</b><div class="mini">${A.esc(((prods.get(x.sku) || {}).titulo || '').slice(0, 46))}</div>`,
+      },
+      { k: 'unidades', t: 'Uds', num: true, r: (x) => F.n(x.unidades || 1) },
+      { k: 'importe', t: 'Reembolsado', num: true, r: (x) => `<span class="neg">−${F.eur(x.importe)}</span>` },
+      { k: 'motivo', t: 'Motivo', cls: 'wrap', r: (x) => A.esc(x.motivo || '—') },
+      {
+        k: 'revendible', t: 'Estado', sv: (x) => (x.revendible ? 1 : 0),
+        r: (x) => x.revendible ? UI.badge('vuelve a stock', 'ok') : UI.badge('mercancía perdida', 'crit'),
+      },
+    ], det, { vacio: 'Sin devoluciones que mostrar.' }));
+    if (d.lista.length > 300) {
+      raiz.appendChild(UI.el(`<p class="sec-note">Se muestran las 300 más recientes de ${F.n(d.lista.length)}. Usa el filtro o exporta a CSV.</p>`));
+    }
+
+    barra.querySelectorAll('#dvPer button').forEach((b) => b.addEventListener('click', () => { preset = b.dataset.p; pintar(); }));
+    barra.querySelectorAll('#dvVista button').forEach((b) => b.addEventListener('click', () => { vista = b.dataset.v; pintar(); }));
+    let t = null;
+    barra.querySelector('#dvFiltro').addEventListener('input', (e) => {
+      clearTimeout(t); const val = e.target.value;
+      t = setTimeout(() => { filtro = val; pintar(); const f = document.getElementById('dvFiltro'); if (f) { f.focus(); f.setSelectionRange(val.length, val.length); } }, 250);
+    });
+
+    cont.appendChild(raiz);
+  }
+
+  /* Detector: productos que se devuelven muy por encima de la media. */
+  A.Alertas.registrarDetector(function () {
+    const rango = UI.rango('d30');
+    const d = datos(rango);
+    const vivos = [];
+    d.porSku.forEach((f, sku) => {
+      const vendidas = Q.ventas({ desde: rango.desde, hasta: rango.hasta, sku }).unidades;
+      if (vendidas < 10) return;                      // sin volumen no hay señal
+      const tasa = f.uds / vendidas;
+      if (tasa < 0.08) return;
+      const hash = 'devoluciones|tasa-alta|' + sku + '|';
+      vivos.push(hash);
+      A.Alertas.push({
+        modulo: 'devoluciones', tipo: 'tasa-alta', prioridad: tasa > 0.15 ? 'ALTA' : 'MEDIA', sku,
+        problema: sku + ' se devuelve el ' + F.pct(tasa) + ' de lo que vende',
+        metrica: F.n(f.uds) + ' de ' + F.n(vendidas) + ' uds en 30 días · motivo más común: ' +
+          ([...d.porMotivo.values()].sort((a, b) => b.uds - a.uds)[0] || { clave: '—' }).clave,
+        impacto: f.importe + f.coste,
+        recomendacion: 'Revisar ficha, fotos y medidas antes de tocar el precio. Cada devolución cuesta el ' +
+          'reembolso más el producto si no vuelve vendible: aquí van ' + F.eur(f.importe + f.coste) + ' en 30 días.',
+      });
+    });
+    A.Alertas.cerrarAusentes('devoluciones', vivos);
+  });
+
+  A.registrar({
+    id: 'devoluciones',
+    titulo: 'Devoluciones',
+    subtitulo: 'Qué se devuelve, por qué y cuánto cuesta',
+    icono: '↩',
+    orden: 5,
+    render: (c, acciones) => {
+      cont = c;
+      const exp = UI.el('<button class="btn sec">Exportar CSV</button>');
+      exp.addEventListener('click', () => A.Tareas.run('Exportar devoluciones', () => {
+        const rango = UI.rango(preset);
+        const d = datos(rango);
+        if (!d.lista.length) throw new Error('No hay devoluciones en el periodo seleccionado.');
+        A.CSV.descargar('devoluciones-' + rango.desde + '_' + rango.hasta + '.csv', A.CSV.aCsv(
+          d.lista.map((x) => ({
+            Fecha: x.fecha, Mercado: x.pais, SKU: x.sku, Unidades: x.unidades || 1,
+            Reembolsado: x.importe, Motivo: x.motivo || '',
+            'Vuelve a stock': x.revendible ? 'si' : 'no',
+            'Coste mercancia perdida': x.revendible ? 0 : Calc.coste(x.sku, x.fecha) * (x.unidades || 1),
+          }))));
+        return d.lista.length + ' devoluciones exportadas';
+      }));
+      acciones.appendChild(exp);
+      pintar();
+    },
+  });
+})();
+
+
+/* ==================== assets/js/mod/gastos.js ==================== */
+/* ==========================================================================
+   GASTOS — lo que no cobra Amazon pero pagas igual.
+   Fijos: cuotas, gestoría, software, sueldos, alquiler… se reparten por los
+   días que el gasto solapa con el periodo consultado.
+   Variables: embalaje, etiquetas o comisiones que escalan con lo que vendes.
+   Ambos los resta ya `Calc.rentabilidad()`, así que lo que se dé de alta aquí
+   cambia el beneficio en todo el ERP.
+   ========================================================================== */
+(function () {
+  'use strict';
+  const A = window.App;
+  const F = A.fmt, UI = A.UI, Q = A.Q, Calc = A.Calc;
+
+  let cont = null;
+  let preset = 'd30';
+  let filtroTipo = 'todos';
+
+  const PERIODICIDADES = [['mensual', 'Mensual'], ['anual', 'Anual'], ['puntual', 'Puntual']];
+  const BASES = [['unidad', 'Por unidad vendida'], ['pedido', 'Por pedido'], ['porcentaje', '% sobre ventas']];
+  const CATEGORIAS = ['Software y suscripciones', 'Asesoría y contabilidad', 'Sueldos y personal',
+    'Almacén y alquiler', 'Embalaje y consumibles', 'Agencias y servicios', 'Impuestos y tasas',
+    'Financieros', 'Marketing fuera de Amazon', 'Otros'];
+
+  /* Sugerencias de arranque: lo que casi todo vendedor paga y suele olvidar
+     meter en la cuenta de resultados. */
+  const PLANTILLAS = [
+    { concepto: 'Cuota Amazon Seller Central', categoria: 'Software y suscripciones', importe: 39, periodicidad: 'mensual' },
+    { concepto: 'Asesoría / gestoría', categoria: 'Asesoría y contabilidad', importe: 150, periodicidad: 'mensual' },
+    { concepto: 'Herramienta de análisis', categoria: 'Software y suscripciones', importe: 29, periodicidad: 'mensual' },
+    { concepto: 'Cuota de autónomo o seguridad social', categoria: 'Sueldos y personal', importe: 320, periodicidad: 'mensual' },
+    { concepto: 'Seguro de responsabilidad civil', categoria: 'Otros', importe: 240, periodicidad: 'anual' },
+    { concepto: 'Embalaje y etiquetas', categoria: 'Embalaje y consumibles', importe: 0.18, tipo: 'variable', base: 'unidad' },
+  ];
+
+  const vacio = () => ({
+    id: A.uid('g'), concepto: '', categoria: 'Otros', tipo: 'fijo', importe: 0,
+    periodicidad: 'mensual', base: 'unidad', desde: A.DB().meta.fechaRef.slice(0, 8) + '01',
+    hasta: '', pais: '', sku: '', nota: '', activo: true,
+  });
+
+  function guardar(g) {
+    const lista = A.DB().gastos || (A.DB().gastos = []);
+    const i = lista.findIndex((x) => x.id === g.id);
+    if (i >= 0) lista[i] = g; else lista.unshift(g);
+    A.Store.save();
+    A.Audit.log(i >= 0 ? 'gasto:editado' : 'gasto:alta', {
+      entidad: 'gasto', ref: g.concepto, despues: F.eur(g.importe) + ' · ' + (g.tipo === 'variable' ? g.base : g.periodicidad),
+    });
+    A.Calc.limpiarCache();
+    A.Bus.emit('datos:cambio');
+  }
+
+  function borrar(g) {
+    A.DB().gastos = (A.DB().gastos || []).filter((x) => x.id !== g.id);
+    A.Store.save();
+    A.Audit.log('gasto:baja', { entidad: 'gasto', ref: g.concepto, antes: F.eur(g.importe) });
+    A.Calc.limpiarCache();
+    A.Bus.emit('datos:cambio');
+  }
+
+  /* ---------- formulario ---------- */
+  function ficha(g, esNuevo) {
+    const paises = ['<option value="">Todos los mercados</option>'].concat(
+      Q.paises().map((p) => `<option value="${p}" ${g.pais === p ? 'selected' : ''}>${p}</option>`)).join('');
+    const skus = ['<option value="">Todos los productos</option>'].concat(
+      Q.productos(true).map((p) => `<option value="${A.esc(p.sku)}" ${g.sku === p.sku ? 'selected' : ''}>${A.esc(p.sku)} · ${A.esc((p.titulo || '').slice(0, 40))}</option>`)).join('');
+
+    const html = `
+      <div class="grid g2" style="gap:12px">
+        <label class="f">Concepto<input id="gCon" type="text" value="${A.esc(g.concepto)}" placeholder="p. ej. Gestoría"></label>
+        <label class="f">Categoría<select id="gCat">${CATEGORIAS.map((c) =>
+      `<option ${g.categoria === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+      </div>
+      <div class="grid g2" style="gap:12px;margin-top:10px">
+        <label class="f">Tipo de gasto<select id="gTipo">
+          <option value="fijo" ${g.tipo === 'fijo' ? 'selected' : ''}>Fijo — se paga pase lo que pase</option>
+          <option value="variable" ${g.tipo === 'variable' ? 'selected' : ''}>Variable — escala con las ventas</option>
+        </select></label>
+        <label class="f"><span id="gLabImp">Importe (€)</span><input id="gImp" type="number" step="0.01" value="${g.importe}"></label>
+      </div>
+      <div class="grid g2" style="gap:12px;margin-top:10px">
+        <label class="f" id="gWrapPer">Periodicidad<select id="gPer">${PERIODICIDADES.map(([k, t]) =>
+      `<option value="${k}" ${g.periodicidad === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label class="f" id="gWrapBase" style="display:none">Se aplica<select id="gBase">${BASES.map(([k, t]) =>
+      `<option value="${k}" ${g.base === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+      </div>
+      <div class="grid g2" style="gap:12px;margin-top:10px">
+        <label class="f">Desde<input id="gDesde" type="date" value="${g.desde}"></label>
+        <label class="f">Hasta (vacío = sigue vigente)<input id="gHasta" type="date" value="${g.hasta}"></label>
+      </div>
+      <div class="grid g2" style="gap:12px;margin-top:10px">
+        <label class="f">Mercado<select id="gPais">${paises}</select></label>
+        <label class="f">Producto<select id="gSku">${skus}</select></label>
+      </div>
+      <label class="f" style="margin-top:10px">Nota<input id="gNota" type="text" value="${A.esc(g.nota)}"></label>
+      <p class="sec-note" style="margin-top:12px">Si dejas mercado y producto en «todos», el gasto se reparte entre
+      todo lo vendido en proporción a la facturación. Si lo asignas a uno concreto, se imputa entero ahí.</p>
+      <div id="gPrev" class="aviso" style="margin-top:12px"></div>`;
+
+    const m = UI.modal(esNuevo ? 'Nuevo gasto' : 'Editar gasto', html, [
+      { t: 'Cancelar', sec: true },
+      esNuevo ? null : {
+        t: 'Eliminar', dan: true, fn: () => {
+          UI.confirmar('¿Eliminar «' + g.concepto + '»? El beneficio de los periodos afectados cambiará.', () => {
+            borrar(g); pintar();
+          });
+          return false;
+        },
+      },
+      {
+        t: esNuevo ? 'Añadir gasto' : 'Guardar', fn: (el) => {
+          const v = leer(el);
+          if (!v.concepto.trim()) { alert('Ponle un concepto al gasto.'); return false; }
+          if (!(v.importe > 0)) { alert('El importe debe ser mayor que cero.'); return false; }
+          guardar(Object.assign(g, v));
+          pintar();
+        },
+      },
+    ].filter(Boolean));
+
+    const el = m.el;
+    const leer = (raiz) => ({
+      concepto: raiz.querySelector('#gCon').value,
+      categoria: raiz.querySelector('#gCat').value,
+      tipo: raiz.querySelector('#gTipo').value,
+      importe: parseFloat(raiz.querySelector('#gImp').value) || 0,
+      periodicidad: raiz.querySelector('#gPer').value,
+      base: raiz.querySelector('#gBase').value,
+      desde: raiz.querySelector('#gDesde').value,
+      hasta: raiz.querySelector('#gHasta').value,
+      pais: raiz.querySelector('#gPais').value,
+      sku: raiz.querySelector('#gSku').value,
+      nota: raiz.querySelector('#gNota').value,
+      activo: true,
+    });
+
+    /* Vista previa: cuánto supone en el periodo actual y qué margen se lleva. */
+    const refrescar = () => {
+      const v = leer(el);
+      const esVar = v.tipo === 'variable';
+      el.querySelector('#gWrapPer').style.display = esVar ? 'none' : '';
+      el.querySelector('#gWrapBase').style.display = esVar ? '' : 'none';
+      el.querySelector('#gLabImp').textContent = !esVar ? 'Importe (€)'
+        : v.base === 'porcentaje' ? 'Porcentaje (%)' : 'Importe por unidad (€)';
+
+      const r = UI.rango(preset);
+      const vt = Q.ventas({ desde: r.desde, hasta: r.hasta, pais: v.pais || undefined, sku: v.sku || undefined });
+      const g2 = Object.assign({}, v, { id: 'previo' });
+      const antes = A.DB().gastos || [];
+      A.DB().gastos = [g2];
+      const calc = Calc.gastos({
+        desde: r.desde, hasta: r.hasta, unidades: vt.unidades, pedidos: vt.pedidos, ventas: vt.bruto, cuota: 1,
+      });
+      A.DB().gastos = antes;
+      const sobreVentas = vt.bruto ? calc.total / vt.bruto : null;
+      el.querySelector('#gPrev').innerHTML = `<div><h4>En los últimos ${F.n(r.dias)} días supondría ${F.eur(calc.total)}</h4>
+        <p>${sobreVentas == null ? 'No hay ventas en el periodo para comparar.'
+          : 'Equivale al ' + F.pct(sobreVentas) + ' de la facturación de ese ámbito (' + F.eur(vt.bruto, 0) + ').'}</p></div>`;
+    };
+    ['#gTipo', '#gImp', '#gPer', '#gBase', '#gPais', '#gSku', '#gDesde', '#gHasta'].forEach((s) => {
+      el.querySelector(s).addEventListener('input', refrescar);
+      el.querySelector(s).addEventListener('change', refrescar);
+    });
+    refrescar();
+  }
+
+  /* ---------- pintado ---------- */
+  function pintar() {
+    if (!cont) return;
+    cont.innerHTML = '';
+    const raiz = UI.el('<div></div>');
+    const lista = A.DB().gastos || [];
+    const r = UI.rango(preset);
+    const v = Q.ventas({ desde: r.desde, hasta: r.hasta });
+    const rent = Calc.rentabilidad({ desde: r.desde, hasta: r.hasta });
+    const g = Calc.gastos({
+      desde: r.desde, hasta: r.hasta, unidades: v.unidades, pedidos: v.pedidos, ventas: v.bruto, cuota: 1,
+    });
+
+    if (!lista.length) {
+      raiz.appendChild(UI.el(`<div class="aviso warn"><div>
+        <h4>Todavía no hay ningún gasto dado de alta, así que el beneficio del ERP está incompleto</h4>
+        <p>Amazon cobra sus tarifas y el ERP ya las descuenta, pero la cuota de Seller Central, la gestoría,
+        el software o el embalaje los pagas igual y hoy no aparecen en ninguna cifra. Hasta que los añadas,
+        el «beneficio real» de todo el ERP está por encima del verdadero.</p></div></div>`));
+      const sug = UI.el(`<div class="card" style="margin-bottom:16px"><div class="hd"><h3>Empezar rápido</h3>
+        <span class="mini">Añade los habituales y ajusta el importe después</span></div>
+        <div class="bd"><div class="chips" id="gPlant">${PLANTILLAS.map((p, i) =>
+        `<button class="chip" data-i="${i}">+ ${A.esc(p.concepto)} · ${p.tipo === 'variable'
+          ? F.eur(p.importe) + '/ud' : F.eur(p.importe) + '/' + (p.periodicidad === 'anual' ? 'año' : 'mes')}</button>`).join('')}
+        </div></div></div>`);
+      sug.querySelectorAll('#gPlant .chip').forEach((b) => b.addEventListener('click', () => {
+        const p = PLANTILLAS[+b.dataset.i];
+        guardar(Object.assign(vacio(), p, { tipo: p.tipo || 'fijo' }));
+        pintar();
+      }));
+      raiz.appendChild(sug);
+    }
+
+    /* KPIs */
+    const mensual = A.sum(lista.filter((x) => x.tipo !== 'variable' && x.activo !== false), (x) =>
+      x.periodicidad === 'anual' ? x.importe / 12 : x.periodicidad === 'puntual' ? 0 : x.importe);
+    const sobreVentas = v.bruto ? g.total / v.bruto : null;
+    const puntoMuerto = mensual > 0 && rent.ventasNetas && (rent.brutoAntesGastos + g.total) > 0
+      ? mensual / ((rent.brutoAntesGastos + g.total) / rent.ventasNetas) : null;
+
+    raiz.appendChild(UI.el(`<div class="grid g4">
+      ${UI.kpi({ label: 'Gasto fijo mensual', valor: F.eur(mensual, 0), sec: `${F.n(lista.filter((x) => x.tipo !== 'variable').length)} conceptos fijos` })}
+      ${UI.kpi({ label: 'Gastos del periodo', valor: F.eur(g.total, 0), sec: `${F.eur(g.fijos, 0)} fijos · ${F.eur(g.variables, 0)} variables`, tono: g.total ? '' : 'warn' })}
+      ${UI.kpi({
+      label: 'Peso sobre ventas', valor: sobreVentas == null ? '—' : F.pct(sobreVentas),
+      sec: `De cada 100 € facturados, ${sobreVentas == null ? '—' : F.n(sobreVentas * 100, 1)} € se van en gastos`,
+      tono: sobreVentas == null ? '' : sobreVentas > 0.15 ? 'crit' : sobreVentas > 0.08 ? 'warn' : 'ok',
+    })}
+      ${UI.kpi({
+      label: 'Ventas para cubrir los fijos', valor: puntoMuerto == null ? '—' : F.eur(puntoMuerto, 0),
+      sec: puntoMuerto == null ? 'Hacen falta ventas y margen para calcularlo'
+        : `Al margen actual (${F.pct((rent.brutoAntesGastos + g.total) / rent.ventasNetas)}), es lo que hay que vender cada mes solo para no perder`,
+    })}
+    </div>`));
+
+    /* Impacto en el beneficio */
+    if (g.total) {
+      const antes = rent.brutoAntesGastos;
+      const caida = antes ? g.total / Math.abs(antes) : null;
+      raiz.appendChild(UI.el(`<div class="aviso ${rent.beneficio < 0 ? 'crit' : ''}" style="margin-top:16px"><div>
+        <h4>Qué le hacen estos gastos al beneficio del periodo</h4>
+        <p>Antes de gastos el negocio dejaba <b>${F.eur(antes)}</b>; después de descontarlos quedan
+        <b class="${rent.beneficio < 0 ? 'neg' : 'pos'}">${F.eur(rent.beneficio)}</b>${caida == null ? ''
+          : `, es decir un <b>${F.pct(caida)}</b> menos`}. El margen pasa del
+        ${F.pct(rent.ventasNetas ? antes / rent.ventasNetas : null)} al ${F.pct(rent.margen)}.</p></div></div>`));
+    }
+
+    /* Barra de periodo y filtros */
+    const barra = UI.el(`<div class="toolbar" style="margin-top:18px">
+      <div class="seg" id="gPeriodo">${[['d30', '30 días'], ['mes', 'Este mes'], ['ano', 'Este año'], ['todo', 'Todo']].map(([k, t]) =>
+      `<button data-p="${k}" class="${k === preset ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <div class="seg" id="gTipoF">${[['todos', 'Todos'], ['fijo', 'Fijos'], ['variable', 'Variables']].map(([k, t]) =>
+      `<button data-t="${k}" class="${k === filtroTipo ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <span class="mini">Del ${F.fecha(r.desde)} al ${F.fecha(r.hasta)}</span>
+      <span class="sp"></span>
+      <button class="btn" id="gNuevo">+ Añadir gasto</button>
+    </div>`);
+    raiz.appendChild(barra);
+
+    /* Tabla */
+    const filas = lista.filter((x) => filtroTipo === 'todos' || x.tipo === filtroTipo);
+    const impacto = new Map(g.detalle.map((d) => [d.id, d.importe]));
+    const cols = [
+      { k: 'concepto', t: 'Concepto', cls: 'wrap', r: (x) => `<b>${A.esc(x.concepto)}</b><div class="mini">${A.esc(x.categoria)}${x.nota ? ' · ' + A.esc(x.nota) : ''}</div>` },
+      {
+        k: 'tipo', t: 'Tipo', r: (x) => x.tipo === 'variable'
+          ? UI.badge('variable', 'info') + '<div class="mini">' + (BASES.find((b) => b[0] === x.base) || ['', ''])[1] + '</div>'
+          : UI.badge('fijo', 'mut') + '<div class="mini">' + (PERIODICIDADES.find((p) => p[0] === x.periodicidad) || ['', ''])[1] + '</div>',
+      },
+      {
+        k: 'importe', t: 'Importe', num: true,
+        r: (x) => x.tipo === 'variable' && x.base === 'porcentaje' ? F.pct(x.importe / 100) : F.eur(x.importe),
+      },
+      {
+        k: 'ambito', t: 'Ámbito', sv: (x) => (x.pais || '') + (x.sku || ''),
+        r: (x) => !x.pais && !x.sku ? '<span class="mini">Todo el negocio</span>'
+          : `${x.pais ? '<span class="pais">' + A.esc(x.pais) + '</span> ' : ''}${x.sku ? '<span class="mono mini">' + A.esc(x.sku) + '</span>' : ''}`,
+      },
+      {
+        k: 'vigencia', t: 'Vigencia', sv: (x) => x.desde || '',
+        r: (x) => `<span class="mini">${x.desde ? F.fecha(x.desde) : '—'} → ${x.hasta ? F.fecha(x.hasta) : 'sigue'}</span>`,
+      },
+      {
+        k: 'periodo', t: 'En el periodo', num: true, sv: (x) => impacto.get(x.id) || 0,
+        r: (x) => {
+          const imp = impacto.get(x.id) || 0;
+          return imp ? `<b class="neg">−${F.eur(imp)}</b>` : '<span class="mini">—</span>';
+        },
+      },
+      {
+        k: 'peso', t: '% de ventas', num: true, sv: (x) => impacto.get(x.id) || 0,
+        r: (x) => v.bruto ? F.pct((impacto.get(x.id) || 0) / v.bruto) : '—',
+      },
+      { k: 'acc', t: '', sort: false, r: () => '<button class="btn sec xs">Editar</button>' },
+    ];
+    const tabla = UI.tabla(cols, filas, {
+      vacio: 'Sin gastos de este tipo. Añade el primero con el botón de arriba.',
+    });
+    tabla.querySelectorAll('tbody tr').forEach((tr, i) => {
+      tr.style.cursor = 'pointer';
+      tr.addEventListener('click', () => ficha(Object.assign({}, filas[i]), false));
+    });
+    raiz.appendChild(tabla);
+
+    if (g.total) {
+      raiz.appendChild(UI.el(`<p class="sec-note" style="margin-top:10px">
+        Los gastos fijos se reparten por los días que solapan con el periodo (un gasto mensual aporta
+        ${F.eur(1)} × días ÷ 30,44). Los variables se multiplican por las unidades, los pedidos o la
+        facturación reales. Todo esto ya lo descuenta el beneficio en el resto del ERP.</p>`));
+    }
+
+    barra.querySelectorAll('#gPeriodo button').forEach((b) => b.addEventListener('click', () => { preset = b.dataset.p; pintar(); }));
+    barra.querySelectorAll('#gTipoF button').forEach((b) => b.addEventListener('click', () => { filtroTipo = b.dataset.t; pintar(); }));
+    barra.querySelector('#gNuevo').addEventListener('click', () => ficha(vacio(), true));
+
+    cont.appendChild(raiz);
+  }
+
+  /* Detector: sin gastos dados de alta, el beneficio que muestra el ERP no es real. */
+  A.Alertas.registrarDetector(function () {
+    const hay = (A.DB().gastos || []).length;
+    if (!hay) {
+      A.Alertas.push({
+        modulo: 'gastos', tipo: 'sin-gastos', prioridad: 'MEDIA',
+        problema: 'El beneficio del ERP no descuenta ningún gasto propio',
+        metrica: '0 conceptos dados de alta',
+        recomendacion: 'Da de alta al menos la cuota de Seller Central, la gestoría y el embalaje. ' +
+          'Mientras no estén, todas las cifras de beneficio del ERP están por encima de la realidad.',
+        impacto: null,
+      });
+      A.Alertas.cerrarAusentes('gastos', ['gastos|sin-gastos||']);
+    } else {
+      A.Alertas.cerrarAusentes('gastos', []);
+    }
+  });
+
+  A.registrar({
+    id: 'gastos',
+    titulo: 'Gastos',
+    subtitulo: 'Lo que no cobra Amazon pero pagas igual',
+    icono: '−',
+    orden: 6,
+    contador: () => ((A.DB().gastos || []).length ? null : { n: '!', tono: 'warn' }),
+    render: (c, acciones) => {
+      cont = c;
+      const exp = UI.el('<button class="btn sec">Exportar CSV</button>');
+      exp.addEventListener('click', () => A.Tareas.run('Exportar gastos', () => {
+        const filas = (A.DB().gastos || []).map((x) => ({
+          Concepto: x.concepto, Categoria: x.categoria, Tipo: x.tipo, Importe: x.importe,
+          Periodicidad: x.periodicidad, Base: x.base, Desde: x.desde, Hasta: x.hasta,
+          Mercado: x.pais, Producto: x.sku, Nota: x.nota,
+        }));
+        if (!filas.length) throw new Error('No hay ningún gasto que exportar todavía.');
+        A.CSV.descargar('gastos-' + A.hoy() + '.csv', A.CSV.aCsv(filas));
+        return filas.length + ' gastos exportados';
+      }));
+      const nuevo = UI.el('<button class="btn">+ Añadir gasto</button>');
+      nuevo.addEventListener('click', () => ficha(vacio(), true));
+      acciones.appendChild(exp);
+      acciones.appendChild(nuevo);
+      pintar();
+    },
+  });
+})();
+
+
+/* ==================== assets/js/mod/caja.js ==================== */
+/* ==========================================================================
+   FLUJO DE CAJA — saber que ganas dinero no es saber si puedes pagar el
+   próximo contenedor. Amazon liquida cada 14 días y retiene una reserva; el
+   proveedor cobra por adelantado y la mercancía tarda semanas en llegar. Este
+   módulo proyecta esa tesorería semana a semana.
+   ========================================================================== */
+(function () {
+  'use strict';
+  const A = window.App;
+  const F = A.fmt, UI = A.UI, Q = A.Q, Calc = A.Calc;
+
+  let cont = null;
+  let semanas = 12;
+
+  const cfg = () => {
+    const s = A.DB().settings;
+    if (!s.caja) {
+      s.caja = {
+        saldoInicial: 0,        // tesorería disponible hoy
+        diasLiquidacion: 14,    // cada cuánto liquida Amazon
+        reserva: 0.15,          // parte que retiene como reserva
+        diasCobro: 7,           // desde el cierre del periodo hasta el ingreso
+        ivaTrimestral: true,
+      };
+      A.Store.save();
+    }
+    return s.caja;
+  };
+
+  const compras = () => A.DB().compras || (A.DB().compras = []);
+
+  /* Ritmo de caja diario a partir de los últimos 30 días: lo que entra por
+     ventas ya descontadas comisiones y publicidad, y lo que sale en producto. */
+  function ritmo() {
+    const ref = A.DB().meta.fechaRef;
+    const desde = A.addDays(ref, -29);
+    const r = Calc.rentabilidad({ desde, hasta: ref });
+    const v = Q.ventas({ desde, hasta: ref });
+    const dias = 30;
+    const entradaBruta = v.bruto;
+    const salidaAmazon = r.referral + r.fba + r.ppc + r.devoluciones;
+    const neto = entradaBruta - salidaAmazon;
+    return {
+      r, v,
+      cobroDia: neto / dias,
+      ivaDia: r.iva / dias,
+      gastosDia: (r.gastos || 0) / dias,
+      cogsDia: r.cogs / dias,
+      margenDia: r.beneficio / dias,
+    };
+  }
+
+  function proyeccion() {
+    const c = cfg();
+    const ri = ritmo();
+    const ref = A.DB().meta.fechaRef;
+    const filas = [];
+    let saldo = Number(c.saldoInicial) || 0;
+
+    for (let i = 0; i < semanas; i++) {
+      const ini = A.addDays(ref, i * 7);
+      const fin = A.addDays(ini, 6);
+      /* Amazon paga el neto de la semana con el desfase de liquidación, y
+         retiene una reserva que se libera en la liquidación siguiente. */
+      const bruto = ri.cobroDia * 7;
+      const cobro = bruto * (1 - c.reserva) + (i > 0 ? ri.cobroDia * 7 * c.reserva : 0);
+      const iva = ri.ivaDia * 7;
+      const gastos = ri.gastosDia * 7;
+      const pagosCompra = A.sum(compras().filter((p) => p.fechaPago >= ini && p.fechaPago <= fin), (p) => p.importe);
+      const salida = iva + gastos + pagosCompra;
+      saldo += cobro - salida;
+      filas.push({
+        semana: i + 1, ini, fin, cobro, iva, gastos, compras: pagosCompra, salida, saldo,
+        entrada: cobro, neto: cobro - salida,
+      });
+    }
+    return { filas, ritmo: ri };
+  }
+
+  function fichaCompra(p, esNueva) {
+    const prods = Q.productos(true);
+    UI.modal(esNueva ? 'Nuevo pedido a proveedor' : 'Pedido a proveedor', `
+      <div class="grid g2" style="gap:12px">
+        <label class="f">Concepto<input id="cpCon" type="text" value="${A.esc(p.concepto || '')}" placeholder="p. ej. Pedido 300 uds"></label>
+        <label class="f">Proveedor<input id="cpProv" type="text" value="${A.esc(p.proveedor || '')}"></label>
+      </div>
+      <div class="grid g2" style="gap:12px;margin-top:10px">
+        <label class="f">Producto<select id="cpSku"><option value="">Varios</option>${prods.map((x) =>
+      `<option value="${A.esc(x.sku)}" ${p.sku === x.sku ? 'selected' : ''}>${A.esc(x.sku)}</option>`).join('')}</select></label>
+        <label class="f">Unidades<input id="cpUds" type="number" value="${p.unidades || 0}"></label>
+      </div>
+      <div class="grid g2" style="gap:12px;margin-top:10px">
+        <label class="f">Importe (€)<input id="cpImp" type="number" step="0.01" value="${p.importe || 0}"></label>
+        <label class="f">Fecha de pago<input id="cpFecha" type="date" value="${p.fechaPago || A.DB().meta.fechaRef}"></label>
+      </div>
+      <label class="f" style="margin-top:10px">Llegada prevista a almacén<input id="cpLlega" type="date" value="${p.fechaLlegada || ''}"></label>
+      <p class="sec-note" style="margin-top:10px">La fecha de pago es la que mueve la tesorería; la de llegada
+      sirve para cruzarla con la reposición.</p>
+    `, [
+      { t: 'Cancelar', sec: true },
+      esNueva ? null : {
+        t: 'Eliminar', dan: true, fn: () => {
+          A.DB().compras = compras().filter((x) => x.id !== p.id);
+          A.Store.save(); pintar();
+        },
+      },
+      {
+        t: 'Guardar', fn: (el) => {
+          const v = {
+            id: p.id || A.uid('cmp'),
+            concepto: el.querySelector('#cpCon').value,
+            proveedor: el.querySelector('#cpProv').value,
+            sku: el.querySelector('#cpSku').value,
+            unidades: parseInt(el.querySelector('#cpUds').value, 10) || 0,
+            importe: parseFloat(el.querySelector('#cpImp').value) || 0,
+            fechaPago: el.querySelector('#cpFecha').value,
+            fechaLlegada: el.querySelector('#cpLlega').value,
+          };
+          if (!v.importe) { alert('Pon el importe del pedido.'); return false; }
+          const l = compras();
+          const i = l.findIndex((x) => x.id === v.id);
+          if (i >= 0) l[i] = v; else l.unshift(v);
+          A.Store.save();
+          A.Audit.log('compra:' + (i >= 0 ? 'editada' : 'alta'), {
+            entidad: 'compra', ref: v.concepto, despues: F.eur(v.importe) + ' el ' + F.fecha(v.fechaPago),
+          });
+          pintar();
+        },
+      },
+    ].filter(Boolean));
+  }
+
+  function pintar() {
+    if (!cont) return;
+    cont.innerHTML = '';
+    const raiz = UI.el('<div></div>');
+    const c = cfg();
+    const p = proyeccion();
+    const minimo = p.filas.reduce((m, f) => (f.saldo < m.saldo ? f : m), p.filas[0]);
+    const negativa = p.filas.find((f) => f.saldo < 0);
+    const final = p.filas[p.filas.length - 1];
+
+    raiz.appendChild(UI.el(`<div class="grid g4">
+      ${UI.kpi({ label: 'Saldo de partida', valor: F.eur(c.saldoInicial, 0), sec: 'Editable abajo; es el dinero que tienes hoy' })}
+      ${UI.kpi({
+      label: 'Entrada semanal', valor: F.eur(p.ritmo.cobroDia * 7, 0),
+      sec: 'Venta menos comisiones, FBA, publicidad y reembolsos, al ritmo de los últimos 30 días',
+    })}
+      ${UI.kpi({
+      label: 'Saldo mínimo previsto', valor: F.eur(minimo ? minimo.saldo : 0, 0),
+      sec: minimo ? `En la semana del ${F.fecha(minimo.ini)}` : '—',
+      tono: minimo && minimo.saldo < 0 ? 'crit' : minimo && minimo.saldo < 2000 ? 'warn' : 'ok',
+    })}
+      ${UI.kpi({
+      label: `Saldo a ${F.n(semanas)} semanas`, valor: F.eur(final ? final.saldo : 0, 0),
+      sec: final ? `${F.eur(final.saldo - (c.saldoInicial || 0), 0)} respecto a hoy` : '—',
+      tono: final && final.saldo < 0 ? 'crit' : 'ok',
+    })}
+    </div>`));
+
+    if (negativa) {
+      raiz.appendChild(UI.el(`<div class="aviso crit" style="margin-top:16px"><div>
+        <h4>La caja se queda en números rojos la semana del ${F.fecha(negativa.ini)}</h4>
+        <p>Con el ritmo actual y los pagos ya anotados, el saldo llega a ${F.eur(negativa.saldo)}. Antes de esa
+        fecha hay que retrasar algún pago a proveedor, reducir la compra prevista o adelantar caja.</p></div></div>`));
+    }
+
+    /* Gráfico de saldo semana a semana, SVG propio. */
+    const w = 900, h = 190, pad = 34;
+    const saldos = p.filas.map((f) => f.saldo);
+    const max = Math.max(...saldos, 0), min = Math.min(...saldos, 0);
+    const rg = (max - min) || 1;
+    const x = (i) => pad + i * ((w - pad * 2) / Math.max(1, p.filas.length - 1));
+    const y = (v) => h - pad - ((v - min) / rg) * (h - pad * 1.6);
+    const linea = saldos.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ');
+    const cero = y(0);
+    raiz.appendChild(UI.el(`<div class="card" style="margin-top:16px"><div class="hd"><h3>Saldo previsto</h3>
+      <span class="mini">semana a semana, partiendo de ${F.eur(c.saldoInicial, 0)}</span></div>
+      <div class="bd" style="overflow-x:auto">
+      <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" role="img" aria-label="Evolución del saldo previsto">
+        <line x1="${pad}" x2="${w - pad}" y1="${cero}" y2="${cero}" stroke="var(--line)" stroke-width="1"></line>
+        <text x="${pad - 6}" y="${cero + 4}" text-anchor="end" font-size="10" fill="var(--muted)">0</text>
+        <path d="${linea} L ${x(saldos.length - 1).toFixed(1)} ${cero} L ${x(0).toFixed(1)} ${cero} Z"
+              fill="var(--accent-2)" opacity=".12"></path>
+        <path d="${linea}" fill="none" stroke="var(--accent-2)" stroke-width="2" stroke-linejoin="round"></path>
+        ${p.filas.map((f, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(f.saldo).toFixed(1)}" r="3"
+          fill="${f.saldo < 0 ? 'var(--crit)' : 'var(--accent-2)'}"><title>Semana del ${F.fecha(f.ini)}: ${F.eur(f.saldo)}</title></circle>`).join('')}
+        ${p.filas.map((f, i) => (i % 2 === 0
+        ? `<text x="${x(i).toFixed(1)}" y="${h - 8}" text-anchor="middle" font-size="9.5" fill="var(--muted)">${F.fechaCorta(f.ini)}</text>` : '')).join('')}
+      </svg></div></div>`));
+
+    /* Ajustes */
+    const aj = UI.el(`<div class="card" style="margin-top:16px"><div class="hd"><h3>Supuestos</h3></div>
+      <div class="bd"><div class="grid g4">
+        <label class="f">Saldo hoy (€)<input id="cjSaldo" type="number" step="0.01" value="${c.saldoInicial}"></label>
+        <label class="f">Reserva que retiene Amazon (%)<input id="cjRes" type="number" step="1" value="${Math.round(c.reserva * 100)}"></label>
+        <label class="f">Días hasta el ingreso<input id="cjDias" type="number" value="${c.diasCobro}"></label>
+        <label class="f">Semanas a proyectar<input id="cjSem" type="number" min="4" max="52" value="${semanas}"></label>
+      </div></div></div>`);
+    raiz.appendChild(aj);
+
+    /* Pagos a proveedor */
+    const barra = UI.el(`<div class="toolbar" style="margin-top:22px">
+      <h2 style="margin:0">Pagos a proveedor</h2>
+      <span class="mini">${F.n(compras().length)} anotados · mueven la tesorería en su fecha de pago</span>
+      <span class="sp"></span>
+      <button class="btn" id="cjNueva">+ Anotar pedido</button></div>`);
+    raiz.appendChild(barra);
+
+    const tablaC = UI.tabla([
+      { k: 'concepto', t: 'Concepto', cls: 'wrap', r: (x) => `<b>${A.esc(x.concepto || '—')}</b>${x.proveedor ? '<div class="mini">' + A.esc(x.proveedor) + '</div>' : ''}` },
+      { k: 'sku', t: 'Producto', r: (x) => x.sku ? `<span class="mono">${A.esc(x.sku)}</span>` : '<span class="mini">varios</span>' },
+      { k: 'unidades', t: 'Uds', num: true, r: (x) => x.unidades ? F.n(x.unidades) : '—' },
+      { k: 'importe', t: 'Importe', num: true, r: (x) => `<b class="neg">−${F.eur(x.importe)}</b>` },
+      { k: 'fechaPago', t: 'Se paga', r: (x) => F.fecha(x.fechaPago) },
+      { k: 'fechaLlegada', t: 'Llega', r: (x) => x.fechaLlegada ? F.fecha(x.fechaLlegada) : '<span class="mini">—</span>' },
+      { k: 'acc', t: '', sort: false, r: () => '<button class="btn sec xs">Editar</button>' },
+    ], compras().slice().sort((a, b) => (a.fechaPago || '').localeCompare(b.fechaPago || '')), {
+      vacio: 'Sin pagos anotados. Añade los pedidos en curso para que la proyección sea real.',
+    });
+    tablaC.querySelectorAll('tbody tr').forEach((tr, i) => {
+      const lista = compras().slice().sort((a, b) => (a.fechaPago || '').localeCompare(b.fechaPago || ''));
+      if (!lista[i]) return;
+      tr.style.cursor = 'pointer';
+      tr.addEventListener('click', () => fichaCompra(Object.assign({}, lista[i]), false));
+    });
+    raiz.appendChild(tablaC);
+
+    /* Proyección semanal */
+    raiz.appendChild(UI.el('<h2>Proyección semanal</h2>'));
+    raiz.appendChild(UI.tabla([
+      { k: 'semana', t: 'Semana', r: (f) => `<b>${F.n(f.semana)}</b> <span class="mini">${F.fecha(f.ini)}</span>` },
+      { k: 'cobro', t: 'Cobros de Amazon', num: true, r: (f) => `<span class="pos">${F.eur(f.cobro, 0)}</span>` },
+      { k: 'iva', t: 'IVA', num: true, r: (f) => `<span class="neg">−${F.eur(f.iva, 0)}</span>` },
+      { k: 'gastos', t: 'Gastos', num: true, r: (f) => f.gastos ? `<span class="neg">−${F.eur(f.gastos, 0)}</span>` : '<span class="mini">—</span>' },
+      { k: 'compras', t: 'Proveedor', num: true, r: (f) => f.compras ? `<span class="neg">−${F.eur(f.compras, 0)}</span>` : '<span class="mini">—</span>' },
+      { k: 'neto', t: 'Neto semana', num: true, r: (f) => `<span class="${f.neto < 0 ? 'neg' : 'pos'}">${F.eur(f.neto, 0)}</span>` },
+      { k: 'saldo', t: 'Saldo', num: true, r: (f) => `<b class="${f.saldo < 0 ? 'neg' : ''}">${F.eur(f.saldo, 0)}</b>` },
+    ], p.filas, {}));
+
+    raiz.appendChild(UI.el(`<p class="sec-note" style="margin-top:10px">
+      La proyección parte del ritmo real de los últimos 30 días: entra la venta menos comisiones, FBA, publicidad y
+      reembolsos; sale el IVA, los gastos dados de alta y los pagos a proveedor anotados. No contempla estacionalidad
+      ni cambios de precio: es una previsión de tesorería, no un presupuesto.
+      ${(A.DB().gastos || []).length ? '' : ' <b>Ojo:</b> aún no hay gastos dados de alta, así que las salidas están incompletas.'}</p>`));
+
+    aj.querySelector('#cjSaldo').addEventListener('change', (e) => { c.saldoInicial = parseFloat(e.target.value) || 0; A.Store.save(); pintar(); });
+    aj.querySelector('#cjRes').addEventListener('change', (e) => { c.reserva = A.clamp((parseFloat(e.target.value) || 0) / 100, 0, 0.9); A.Store.save(); pintar(); });
+    aj.querySelector('#cjDias').addEventListener('change', (e) => { c.diasCobro = parseInt(e.target.value, 10) || 7; A.Store.save(); pintar(); });
+    aj.querySelector('#cjSem').addEventListener('change', (e) => { semanas = A.clamp(parseInt(e.target.value, 10) || 12, 4, 52); pintar(); });
+    barra.querySelector('#cjNueva').addEventListener('click', () => fichaCompra({}, true));
+
+    cont.appendChild(raiz);
+  }
+
+  A.Alertas.registrarDetector(function () {
+    const p = proyeccion();
+    const neg = p.filas.find((f) => f.saldo < 0);
+    const vivos = [];
+    if (neg) {
+      vivos.push('caja|saldo-negativo||');
+      A.Alertas.push({
+        modulo: 'caja', tipo: 'saldo-negativo', prioridad: 'ALTA',
+        problema: 'La tesorería se queda en negativo la semana del ' + F.fecha(neg.ini),
+        metrica: 'Saldo previsto ' + F.eur(neg.saldo) + ' en la semana ' + F.n(neg.semana),
+        impacto: Math.abs(neg.saldo),
+        recomendacion: 'Retrasar un pago a proveedor, reducir la próxima compra o adelantar caja antes de esa fecha.',
+      });
+    }
+    A.Alertas.cerrarAusentes('caja', vivos);
+  });
+
+  A.registrar({
+    id: 'caja',
+    titulo: 'Flujo de caja',
+    subtitulo: 'Si podrás pagar el próximo pedido',
+    icono: '≈',
+    orden: 7,
+    render: (c2, acciones) => {
+      cont = c2;
+      const b = UI.el('<button class="btn sec">+ Anotar pedido</button>');
+      b.addEventListener('click', () => fichaCompra({}, true));
+      acciones.appendChild(b);
+      pintar();
+    },
+  });
+})();
+
+
+/* ==================== assets/js/mod/moneyback.js ==================== */
+/* ==========================================================================
+   RECLAMACIONES — dinero que Amazon te debe y no te ha devuelto solo.
+   Detecta cuatro frentes y lleva el seguimiento de cada caso hasta el cobro:
+     · devoluciones reembolsadas al cliente que nunca volvieron al almacén,
+     · subidas de tarifa FBA aplicadas por encima de lo esperado,
+     · inventario que desaparece entre lo enviado y lo disponible,
+     · reembolsos por encima del importe de la venta.
+   El ERP no reclama por ti: prepara el caso, el texto y el seguimiento.
+   ========================================================================== */
+(function () {
+  'use strict';
+  const A = window.App;
+  const F = A.fmt, UI = A.UI, Q = A.Q, Calc = A.Calc;
+
+  let cont = null;
+  let filtroEstado = 'abiertos';
+
+  const ESTADOS = ['detectado', 'reclamado', 'aceptado', 'rechazado', 'cobrado', 'descartado'];
+  const TONO = {
+    detectado: 'warn', reclamado: 'info', aceptado: 'ok',
+    rechazado: 'crit', cobrado: 'ok', descartado: 'mut',
+  };
+  /* Amazon no admite reclamaciones indefinidamente; 60 días es el plazo más
+     corto habitual, así que se avisa cuando el caso se acerca a él. */
+  const DIAS_LIMITE = 60;
+
+  const casos = () => A.DB().reclamaciones || (A.DB().reclamaciones = []);
+
+  function registrar(c) {
+    const l = casos();
+    const ex = l.find((x) => x.clave === c.clave);
+    if (ex) {                     // ya detectado: solo se refresca el importe
+      ex.importe = c.importe; ex.detalle = c.detalle; ex.visto = A.DB().meta.fechaRef;
+      return ex;
+    }
+    const nuevo = Object.assign({
+      id: A.uid('rec'), estado: 'detectado', creado: A.DB().meta.fechaRef, visto: A.DB().meta.fechaRef, nota: '',
+    }, c);
+    l.unshift(nuevo);
+    return nuevo;
+  }
+
+  /* ---------- detección ---------- */
+  function detectar() {
+    const ref = A.DB().meta.fechaRef;
+    const desde = A.addDays(ref, -179);
+    let n = 0;
+
+    /* 1. Devoluciones que no vuelven al almacén: cliente reembolsado y
+          mercancía perdida. Se reclama el valor del producto. */
+    (A.DB().devoluciones || []).forEach((d) => {
+      if (d.fecha < desde || d.revendible) return;
+      const uds = d.unidades || 1;
+      const coste = Calc.coste(d.sku, d.fecha) * uds;
+      if (coste < 3) return;                      // por debajo no compensa el papeleo
+      registrar({
+        clave: 'dev|' + (d.id || d.fecha + d.sku),
+        tipo: 'Devolución no reintegrada', sku: d.sku, pais: d.pais, fecha: d.fecha,
+        importe: coste,
+        detalle: `${F.n(uds)} ud. devueltas el ${F.fecha(d.fecha)} por «${d.motivo || 'sin motivo'}» que no ` +
+          `volvieron a stock vendible. Reembolsaste ${F.eur(d.importe)} al cliente y perdiste ${F.eur(coste)} de producto.`,
+        accion: 'Abrir caso en Seller Central › Gestionar devoluciones FBA, adjuntando el ID de devolución. ' +
+          'Si Amazon no devolvió la unidad al inventario en 45 días, corresponde reembolso.',
+      });
+      n++;
+    });
+
+    /* 2. Tarifas FBA por encima de lo esperado: se reclama la diferencia por
+          cada unidad vendida desde que cambió. */
+    const vent30 = new Map();
+    Q.pedidos({ desde: A.addDays(ref, -29), hasta: ref }).forEach((o) => {
+      const k = o.sku + '|' + o.pais;
+      vent30.set(k, (vent30.get(k) || 0) + o.unidades);
+    });
+    (A.DB().fees || []).forEach((f) => {
+      if (f.tipo !== 'fba') return;
+      const dif = (f.actual || 0) - (f.esperada || 0);
+      if (dif <= 0.05) return;
+      const uds = vent30.get(f.sku + '|' + f.pais) || 0;
+      const impacto = dif * uds;
+      if (impacto < 5) return;
+      registrar({
+        clave: 'fee|' + f.sku + '|' + f.pais,
+        tipo: 'Tarifa FBA por encima de lo esperado', sku: f.sku, pais: f.pais, fecha: f.fecha,
+        importe: impacto,
+        detalle: `Amazon cobra ${F.eur(f.actual)} por unidad cuando la ficha esperaba ${F.eur(f.esperada)} ` +
+          `(${F.eur(dif)} de más). Con ${F.n(uds)} unidades vendidas en 30 días son ${F.eur(impacto)} al mes.`,
+        accion: 'Comprobar medidas y peso reales en el módulo Tarifas. Si la banda de tamaño no corresponde, ' +
+          'solicitar remedición en Seller Central; el reembolso es retroactivo desde el cambio.',
+      });
+      n++;
+    });
+
+    /* 3. Diferencia entre lo enviado y lo que aparece disponible. Sin el
+          informe de envíos FBA no se puede afinar: se marca como revisión. */
+    (A.DB().inventario || []).forEach((i) => {
+      if (!i.transito || i.transito < 100) return;
+      const dias = A.diffDias(i.fecha || ref, ref);
+      if (dias < 45) return;
+      registrar({
+        clave: 'env|' + i.sku + '|' + i.pais,
+        tipo: 'Envío sin recepcionar', sku: i.sku, pais: i.pais, fecha: i.fecha,
+        importe: Calc.coste(i.sku, ref) * i.transito,
+        detalle: `${F.n(i.transito)} unidades llevan ${F.n(dias)} días en tránsito hacia ${i.pais} sin pasar a ` +
+          'disponible. Puede ser retraso de recepción o pérdida en almacén.',
+        accion: 'Contrastar con el informe de envíos FBA. Si el envío consta entregado y no recepcionado, ' +
+          'abrir caso de conciliación de envío.',
+      });
+      n++;
+    });
+
+    /* 4. Reembolsos por encima del precio de venta del producto. */
+    (A.DB().devoluciones || []).forEach((d) => {
+      if (d.fecha < desde) return;
+      const p = Q.producto(d.sku);
+      const pp = p && p.porPais && p.porPais[d.pais];
+      if (!pp || !pp.precio) return;
+      const esperado = pp.precio * (d.unidades || 1);
+      const exceso = (d.importe || 0) - esperado;
+      if (exceso < 1) return;
+      registrar({
+        clave: 'exc|' + (d.id || d.fecha + d.sku),
+        tipo: 'Reembolso superior a la venta', sku: d.sku, pais: d.pais, fecha: d.fecha,
+        importe: exceso,
+        detalle: `Se reembolsaron ${F.eur(d.importe)} por ${F.n(d.unidades || 1)} ud. cuando el precio de venta ` +
+          `era ${F.eur(esperado)}. Diferencia a favor: ${F.eur(exceso)}.`,
+        accion: 'Cotejar con el informe de transacciones y abrir caso si la diferencia no responde a una promoción.',
+      });
+      n++;
+    });
+
+    A.Store.save();
+    return n;
+  }
+
+  function cambiarEstado(c, estado, nota) {
+    const antes = c.estado;
+    c.estado = estado;
+    if (nota != null) c.nota = nota;
+    c[estado] = A.DB().meta.fechaRef;
+    A.Store.save();
+    A.Audit.log('reclamacion:' + estado, {
+      entidad: 'reclamacion', ref: c.tipo, sku: c.sku, pais: c.pais,
+      antes, despues: estado, motivo: c.nota || '',
+    });
+    A.Bus.emit('datos:cambio');
+  }
+
+  function ficha(c) {
+    const dias = A.diffDias(c.fecha || c.creado, A.DB().meta.fechaRef);
+    const caduca = DIAS_LIMITE - dias;
+    const texto = `Asunto: ${c.tipo} — SKU ${c.sku || ''} (${c.pais || ''})\n\n` +
+      `Buenos días,\n\n${c.detalle}\n\nSolicito la revisión del caso y el reembolso de ${F.eur(c.importe)}.\n` +
+      `Fecha del hecho: ${F.fecha(c.fecha || c.creado)}.\n\nGracias.`;
+
+    UI.modal(c.tipo, `
+      <div class="dl" style="margin-bottom:12px">
+        <dt>Producto</dt><dd>${A.esc(c.sku || '—')} ${c.pais ? '· ' + A.esc(c.pais) : ''}</dd>
+        <dt>Fecha</dt><dd>${F.fecha(c.fecha || c.creado)} <span class="mini">(hace ${F.n(dias)} días)</span></dd>
+        <dt>Importe</dt><dd><b>${F.eur(c.importe)}</b></dd>
+        <dt>Estado</dt><dd>${UI.badge(c.estado, TONO[c.estado])}</dd>
+      </div>
+      ${caduca <= 15 && ['detectado', 'reclamado'].indexOf(c.estado) >= 0
+        ? `<div class="aviso ${caduca <= 0 ? 'crit' : 'warn'}"><div><h4>${caduca <= 0
+          ? 'Fuera del plazo habitual de reclamación' : 'Quedan ' + F.n(caduca) + ' días'}</h4>
+          <p>Amazon suele admitir reclamaciones hasta unos ${DIAS_LIMITE} días después del hecho.</p></div></div>` : ''}
+      <p>${A.esc(c.detalle)}</p>
+      <h3 style="margin-top:14px">Qué hacer</h3>
+      <p>${A.esc(c.accion)}</p>
+      <h3 style="margin-top:14px">Texto para el caso</h3>
+      <textarea id="recTxt" rows="9" style="width:100%;font-size:12px">${A.esc(texto)}</textarea>
+      <label class="f" style="margin-top:12px">Nota interna<input id="recNota" type="text" value="${A.esc(c.nota || '')}"></label>
+      <label class="f" style="margin-top:10px">Estado<select id="recEstado">${ESTADOS.map((e) =>
+        `<option value="${e}" ${c.estado === e ? 'selected' : ''}>${e}</option>`).join('')}</select></label>
+    `, [
+      { t: 'Cerrar', sec: true },
+      {
+        t: 'Copiar texto', sec: true, fn: (el) => {
+          const t = el.querySelector('#recTxt'); t.select(); document.execCommand('copy');
+          return false;
+        },
+      },
+      {
+        t: 'Guardar', fn: (el) => {
+          cambiarEstado(c, el.querySelector('#recEstado').value, el.querySelector('#recNota').value);
+          pintar();
+        },
+      },
+    ]);
+  }
+
+  function pintar() {
+    if (!cont) return;
+    cont.innerHTML = '';
+    const raiz = UI.el('<div></div>');
+    const l = casos();
+    const abiertos = l.filter((c) => ['detectado', 'reclamado'].indexOf(c.estado) >= 0);
+    const recuperado = A.sum(l.filter((c) => c.estado === 'cobrado'), (c) => c.importe);
+    const enJuego = A.sum(abiertos, (c) => c.importe);
+    const ref = A.DB().meta.fechaRef;
+    const caducan = abiertos.filter((c) => DIAS_LIMITE - A.diffDias(c.fecha || c.creado, ref) <= 15);
+
+    raiz.appendChild(UI.el(`<div class="grid g4">
+      ${UI.kpi({ label: 'Por reclamar', valor: F.eur(enJuego, 0), sec: `${F.n(abiertos.length)} casos abiertos`, tono: enJuego > 0 ? 'warn' : 'ok' })}
+      ${UI.kpi({ label: 'Ya recuperado', valor: F.eur(recuperado, 0), sec: `${F.n(l.filter((c) => c.estado === 'cobrado').length)} casos cobrados`, tono: recuperado ? 'ok' : '' })}
+      ${UI.kpi({
+      label: 'Caducan pronto', valor: F.n(caducan.length),
+      sec: `Amazon admite reclamaciones unos ${DIAS_LIMITE} días`, tono: caducan.length ? 'crit' : 'ok',
+    })}
+      ${UI.kpi({ label: 'Detectados en total', valor: F.n(l.length), sec: 'Se revisan los últimos 180 días' })}
+    </div>`));
+
+    if (!l.length) {
+      raiz.appendChild(UI.el(`<div class="aviso" style="margin-top:16px"><div>
+        <h4>Aún no se ha buscado nada</h4>
+        <p>Pulsa «Buscar reclamaciones» para revisar devoluciones no reintegradas, subidas de tarifa,
+        envíos sin recepcionar y reembolsos superiores a la venta de los últimos 180 días.</p></div></div>`));
+    } else if (caducan.length) {
+      raiz.appendChild(UI.el(`<div class="aviso crit" style="margin-top:16px"><div>
+        <h4>${F.n(caducan.length)} reclamaciones a punto de caducar · ${F.eur(A.sum(caducan, (c) => c.importe))}</h4>
+        <p>Pasados unos ${DIAS_LIMITE} días desde el hecho, Amazon deja de admitir el caso. Estas son las primeras:
+        ${caducan.slice(0, 3).map((c) => A.esc(c.sku || c.tipo) + ' (' + F.eur(c.importe) + ')').join(' · ')}.</p></div></div>`));
+    }
+
+    const barra = UI.el(`<div class="toolbar" style="margin-top:18px">
+      <div class="seg" id="mbF">${[['abiertos', 'Abiertos'], ['todos', 'Todos'], ['cobrado', 'Cobrados'], ['descartado', 'Descartados']].map(([k, t]) =>
+      `<button data-f="${k}" class="${k === filtroEstado ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <span class="sp"></span>
+      <button class="btn" id="mbBuscar">Buscar reclamaciones</button>
+    </div>`);
+    raiz.appendChild(barra);
+
+    const filas = l.filter((c) => filtroEstado === 'todos' ? true
+      : filtroEstado === 'abiertos' ? ['detectado', 'reclamado'].indexOf(c.estado) >= 0
+        : c.estado === filtroEstado)
+      .sort((a, b) => b.importe - a.importe);
+
+    const tabla = UI.tabla([
+      { k: 'tipo', t: 'Motivo', cls: 'wrap', r: (c) => `<b>${A.esc(c.tipo)}</b><div class="mini">${A.esc((c.detalle || '').slice(0, 90))}…</div>` },
+      { k: 'sku', t: 'Producto', r: (c) => `<span class="mono">${A.esc(c.sku || '—')}</span>${c.pais ? ' <span class="pais">' + A.esc(c.pais) + '</span>' : ''}` },
+      { k: 'fecha', t: 'Fecha', r: (c) => F.fecha(c.fecha || c.creado) },
+      {
+        k: 'plazo', t: 'Plazo', num: true, sv: (c) => DIAS_LIMITE - A.diffDias(c.fecha || c.creado, ref),
+        r: (c) => {
+          if (['cobrado', 'descartado', 'rechazado'].indexOf(c.estado) >= 0) return '<span class="mini">—</span>';
+          const q = DIAS_LIMITE - A.diffDias(c.fecha || c.creado, ref);
+          if (q <= 0) return '<span class="neg strong">caducada</span>';
+          return `<span class="${q <= 15 ? 'neg' : ''}">${F.n(q)} d</span>`;
+        },
+      },
+      { k: 'importe', t: 'Importe', num: true, r: (c) => `<b>${F.eur(c.importe)}</b>` },
+      { k: 'estado', t: 'Estado', r: (c) => UI.badge(c.estado, TONO[c.estado]) },
+      { k: 'acc', t: '', sort: false, r: () => '<button class="btn sec xs">Abrir</button>' },
+    ], filas, { vacio: 'Sin reclamaciones en este estado.' });
+    raiz.appendChild(tabla);
+    tabla.querySelectorAll('tbody tr').forEach((tr, i) => {
+        if (!filas[i]) return;
+        tr.style.cursor = 'pointer';
+        tr.addEventListener('click', () => ficha(filas[i]));
+    });
+
+    raiz.appendChild(UI.el(`<p class="sec-note" style="margin-top:10px">
+      El ERP no reclama por ti: detecta el caso, calcula el importe y te prepara el texto. Marcar un caso como
+      «cobrado» deja constancia en Auditoría y suma al total recuperado. Con el informe de envíos FBA y el de
+      inventario reembolsado, la detección de mercancía perdida será bastante más precisa.</p>`));
+
+    barra.querySelectorAll('#mbF button').forEach((b) => b.addEventListener('click', () => { filtroEstado = b.dataset.f; pintar(); }));
+    barra.querySelector('#mbBuscar').addEventListener('click', () => {
+      A.Tareas.run('Buscar reclamaciones', () => {
+        const antes = casos().length;
+        detectar();
+        const ahora = casos().length;
+        pintar();
+        const nuevas = ahora - antes;
+        return nuevas ? nuevas + ' casos nuevos · ' + F.eur(A.sum(casos().filter((c) => ['detectado', 'reclamado'].indexOf(c.estado) >= 0), (c) => c.importe)) + ' por reclamar'
+          : 'Sin casos nuevos; ' + F.n(ahora) + ' ya registrados';
+      });
+    });
+
+    cont.appendChild(raiz);
+  }
+
+  A.Alertas.registrarDetector(function () {
+    const ref = A.DB().meta.fechaRef;
+    const abiertos = casos().filter((c) => ['detectado', 'reclamado'].indexOf(c.estado) >= 0);
+    const caducan = abiertos.filter((c) => DIAS_LIMITE - A.diffDias(c.fecha || c.creado, ref) <= 15);
+    const vivos = [];
+    if (caducan.length) {
+      vivos.push('moneyback|caducan||');
+      A.Alertas.push({
+        modulo: 'moneyback', tipo: 'caducan', prioridad: 'ALTA',
+        problema: F.n(caducan.length) + ' reclamaciones a punto de caducar',
+        metrica: F.eur(A.sum(caducan, (c) => c.importe)) + ' en juego',
+        impacto: A.sum(caducan, (c) => c.importe),
+        recomendacion: 'Abrir los casos en Seller Central antes de que pasen los ' + DIAS_LIMITE +
+          ' días. El módulo trae el texto preparado para cada uno.',
+      });
+    }
+    A.Alertas.cerrarAusentes('moneyback', vivos);
+  });
+
+  A.registrar({
+    id: 'moneyback',
+    titulo: 'Reclamaciones',
+    subtitulo: 'Dinero que Amazon te debe y no devuelve solo',
+    icono: '↺',
+    orden: 8,
+    contador: () => {
+      const n = casos().filter((c) => ['detectado', 'reclamado'].indexOf(c.estado) >= 0).length;
+      return n ? { n, tono: 'warn' } : null;
+    },
+    render: (c, acciones) => {
+      cont = c;
+      const b = UI.el('<button class="btn">Buscar reclamaciones</button>');
+      b.addEventListener('click', () => A.Tareas.run('Buscar reclamaciones', () => {
+        const antes = casos().length;
+        detectar();
+        pintar();
+        return (casos().length - antes) + ' casos nuevos';
+      }));
+      acciones.appendChild(b);
+      pintar();
+    },
   });
 })();
 
