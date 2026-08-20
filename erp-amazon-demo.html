@@ -1579,10 +1579,10 @@ window.SEED = function () {
 
     pintarNav() {
       const nav = document.getElementById('nav');
-      const grupos = [['Operación', ['dashboard', 'pedidos', 'productos', 'rentabilidad', 'devoluciones']],
-      ['Finanzas', ['gastos', 'caja', 'moneyback']],
+      const grupos = [['Operación', ['dashboard', 'informe', 'pedidos', 'productos', 'rentabilidad', 'devoluciones']],
+      ['Finanzas', ['gastos', 'caja', 'contable', 'moneyback', 'valoracion']],
       ['Publicidad', ['ppc', 'searchterms', 'cambios']],
-      ['Cadena', ['inventario', 'fees', 'epr']],
+      ['Cadena', ['inventario', 'compras', 'fees', 'epr']],
       ['Control', ['alertas', 'auditoria', 'datos']]];
       let html = `<div class="logo">ACME <em>ERP</em><small>Control Amazon</small></div>`;
       grupos.forEach(([g, ids]) => {
@@ -6342,6 +6342,3243 @@ window.SEED = function () {
         pintar();
         return (casos().length - antes) + ' casos nuevos';
       }));
+      acciones.appendChild(b);
+      pintar();
+    },
+  });
+})();
+
+
+/* ==================== assets/js/mod/compras.js ==================== */
+/* ==========================================================================
+   COMPRAS Y PROVEEDORES — cerrar el círculo entre «hay que reponer» y «el
+   pedido ya está en camino». El módulo de inventario dice cuánto falta; este
+   dice si ya está pedido, a quién, cuánto capital inmoviliza, cuándo se paga
+   y cuándo llega. Los pedidos viven en DB().compras, el mismo array que lee
+   el flujo de caja: los campos que usa (importe, fechaPago) se respetan.
+   ========================================================================== */
+(function () {
+  'use strict';
+  const A = window.App;
+  const F = A.fmt, UI = A.UI, Q = A.Q, Calc = A.Calc;
+
+  let cont = null;
+  let filtroEstado = 'curso';
+
+  const SEMANAS = 12;
+  /* El módulo de inventario ya avisa de cada rotura: aquí solo se abre aviso
+     propio si además no hay nada comprado y el dinero en juego lo justifica. */
+  const MIN_RIESGO = 100;
+  const MAX_AVISOS = 8;
+
+  const ESTADOS = [
+    ['borrador', 'Borrador', 'mut', 'Todavía no lo has confirmado al proveedor'],
+    ['confirmado', 'Confirmado', 'info', 'En firme con el proveedor, pendiente de pagar'],
+    ['pagado', 'Pagado', 'info', 'Pagado, pendiente de que salga de fábrica'],
+    ['transito', 'En tránsito', 'warn', 'En camino al almacén o al centro de Amazon'],
+    ['recibido', 'Recibido', 'ok', 'Mercancía dada de alta'],
+    ['cancelado', 'Cancelado', 'mut', 'Anulado: no cuenta ni en caja ni en cobertura'],
+  ];
+  const EST = new Map(ESTADOS.map((e) => [e[0], e]));
+  /* «En curso» = comprometido con el proveedor pero aún no en el almacén: es lo
+     que descuenta de la reposición y lo que inmoviliza capital. */
+  const EN_CURSO = ['confirmado', 'pagado', 'transito'];
+
+  const ref = () => A.DB().meta.fechaRef || A.hoy();
+  const compras = () => A.DB().compras || (A.DB().compras = []);
+  const proveedores = () => A.DB().proveedores || (A.DB().proveedores = []);
+  const proveedor = (id) => proveedores().find((x) => x.id === id) || null;
+
+  /* ======================= lectura tolerante =======================
+     El flujo de caja da de alta pedidos con solo {sku, unidades, importe}. Se
+     leen como un pedido de una sola línea para no perder nada de lo anotado. */
+  function lineasDe(p) {
+    if (p.lineas && p.lineas.length) return p.lineas;
+    if (!p.sku && !p.unidades) return [];
+    const u = Number(p.unidades) || 0;
+    return [{
+      sku: p.sku || '', unidades: u, coste: u ? (Number(p.importe) || 0) / u : 0,
+      pais: p.paisDestino || '', recibidas: 0,
+    }];
+  }
+  function estadoDe(p) {
+    if (p.estado) return p.estado;
+    const r = ref();
+    if (p.fechaLlegada && p.fechaLlegada <= r) return 'recibido';
+    if (p.fechaPago && p.fechaPago <= r) return 'transito';
+    return 'confirmado';
+  }
+  const enCurso = (p) => EN_CURSO.indexOf(estadoDe(p)) >= 0;
+  const pagoPendiente = (p) => {
+    const e = estadoDe(p);
+    return !!p.fechaPago && (e === 'borrador' || e === 'confirmado');
+  };
+
+  function pendiente(p) {
+    const ls = lineasDe(p);
+    const uds = A.sum(ls, (l) => Number(l.unidades) || 0);
+    const rec = A.sum(ls, (l) => Number(l.recibidas) || 0);
+    const falta = Math.max(0, uds - rec);
+    const imp = Number(p.importe) || 0;
+    return { uds, recibidas: rec, falta, importe: uds ? imp * falta / uds : imp };
+  }
+
+  const etiqueta = (p) => p.referencia || p.concepto || (p.sku ? p.sku : 'Pedido sin concepto');
+
+  /* ======================= qué hay que pedir =======================
+     Calc.reposicion trabaja por SKU × mercado; aquí se agrega por SKU porque
+     al proveedor se le compra el producto, no el mercado. El cálculo recorre
+     las líneas de pedido varias veces, así que se cachea hasta que cambien
+     los datos. */
+  const cache = { marca: null, filas: null };
+  A.Bus.on('datos:cambio', () => { cache.marca = null; });
+
+  function leadDe(sku, prod) {
+    /* El plazo real es el del proveedor al que se le compra ese SKU; si no hay
+       histórico, el del producto y, en último término, el ajuste global. */
+    const conSku = compras().filter((p) => p.proveedorId && lineasDe(p).some((l) => l.sku === sku));
+    conSku.sort((a, b) => String(b.fechaPago || '').localeCompare(String(a.fechaPago || '')));
+    const pr = conSku.length ? proveedor(conSku[0].proveedorId) : null;
+    if (pr && pr.leadTimeDias > 0) return { dias: pr.leadTimeDias, origen: pr.nombre };
+    if (prod && prod.leadTime > 0) return { dias: prod.leadTime, origen: 'ficha del producto' };
+    return { dias: A.DB().settings.leadTimeDias, origen: 'ajuste general' };
+  }
+
+  function reposicion() {
+    const db = A.DB();
+    const marca = [db.pedidos.length, db.inventario.length, db.productos.length,
+      compras().length, proveedores().length, db.settings.leadTimeDias,
+      db.settings.stockSeguridadDias, db.settings.cicloPedidoDias].join('|');
+    if (cache.filas && cache.marca === marca) return cache.filas;
+
+    const r = ref();
+    const seg = db.settings.stockSeguridadDias;
+
+    /* Universo: toda combinación SKU × mercado con ficha de inventario o con
+       la oferta activa en ese país. */
+    const combos = new Map();
+    db.inventario.forEach((i) => {
+      const p = Q.producto(i.sku);
+      if (!p || p.activo === false) return;
+      combos.set(i.sku + '|' + i.pais, { sku: i.sku, pais: i.pais });
+    });
+    Q.productos(true).forEach((p) => {
+      Q.paises().forEach((pais) => {
+        const pp = (p.porPais || {})[pais];
+        if (pp && pp.activo) combos.set(p.sku + '|' + pais, { sku: p.sku, pais });
+      });
+    });
+
+    /* Unidades ya pedidas al proveedor y todavía no recibidas. Se guardan por
+       SKU × mercado de destino porque el stock de un país no cubre a otro; las
+       líneas sin destino asignado quedan en un fondo común del SKU. */
+    const camino = new Map();
+    const caminoSku = new Map();
+    compras().filter(enCurso).forEach((p) => {
+      lineasDe(p).forEach((l) => {
+        const falta = Math.max(0, (Number(l.unidades) || 0) - (Number(l.recibidas) || 0));
+        if (!l.sku || !falta) return;
+        const g = caminoSku.get(l.sku) || { uds: 0, sinDestino: 0, pedidos: [] };
+        g.uds += falta;
+        if (!l.pais) g.sinDestino += falta;
+        else camino.set(l.sku + '|' + l.pais, (camino.get(l.sku + '|' + l.pais) || 0) + falta);
+        if (g.pedidos.indexOf(p) < 0) g.pedidos.push(p);
+        caminoSku.set(l.sku, g);
+      });
+    });
+
+    /* Primera pasada: la reposición cruda de cada mercado. */
+    const porSku = new Map();
+    combos.forEach((c) => {
+      const rp = Calc.reposicion(c.sku, c.pais);
+      const prod = Q.producto(c.sku);
+      const pp = (prod && prod.porPais && prod.porPais[c.pais]) || {};
+      let g = porSku.get(c.sku);
+      if (!g) {
+        g = {
+          sku: c.sku, titulo: (prod && prod.titulo) || '(fuera del catálogo)',
+          coste: Calc.coste(c.sku, r), crudos: [],
+        };
+        porSku.set(c.sku, g);
+      }
+      g.crudos.push({ rp, pais: c.pais, precio: pp.precio || 0 });
+    });
+
+    /* Segunda pasada: el plazo del proveedor es por SKU, así que el estado de
+       cada mercado se recalcula con él y con lo que ya va en camino a ese país.
+       El SKU hereda el peor mercado: un exceso en España no salva una rotura
+       en Francia. */
+    const grav = { 'ROTURA': 0, 'BAJO': 1, 'OK': 2, 'SIN MOVIMIENTO': 3 };
+    const filas = [];
+    porSku.forEach((g) => {
+      const lead = leadDe(g.sku, Q.producto(g.sku));
+      const cam = caminoSku.get(g.sku) || { uds: 0, sinDestino: 0, pedidos: [] };
+      let disponible = 0, transito = 0, vel = 0, neto = 0, precioPeso = 0;
+      let estado = 'OK', margen = null, critica = null;
+      const mercados = [];
+      g.crudos.forEach((c) => {
+        const rp = c.rp;
+        const enCaminoPais = camino.get(g.sku + '|' + c.pais) || 0;
+        const stockM = rp.disponible + rp.transito + enCaminoPais;
+        const cobM = rp.vel > 0 ? stockM / rp.vel : (stockM > 0 ? Infinity : 0);
+        let estM = 'OK';
+        if (rp.vel === 0) estM = rp.disponible > 0 ? 'SIN MOVIMIENTO' : 'OK';
+        else if (cobM < lead.dias) estM = 'ROTURA';
+        else if (cobM < lead.dias + seg) estM = 'BAJO';
+        const netoM = Math.max(0, rp.recomendado - enCaminoPais);
+        disponible += rp.disponible; transito += rp.transito; vel += rp.vel;
+        neto += netoM; precioPeso += c.precio * rp.vel;
+        if (grav[estM] < grav[estado]) estado = estM;
+        if (rp.vel > 0 && isFinite(cobM)) {
+          const mM = Math.floor(cobM - lead.dias);
+          if (margen == null || mM < margen) margen = mM;
+          if (critica == null || cobM < critica) critica = cobM;
+        }
+        mercados.push({ pais: c.pais, estado: estM, recomendado: netoM, cobertura: cobM, enCamino: enCaminoPais });
+      });
+      /* Lo que va en camino sin país asignado todavía no se ha imputado. */
+      neto = Math.max(0, neto - cam.sinDestino);
+      const stock = disponible + transito;
+      filas.push({
+        sku: g.sku, titulo: g.titulo, coste: g.coste,
+        disponible, transito, stock, vel, estado, neto,
+        lead: lead.dias, leadOrigen: lead.origen,
+        coberturaConPedido: vel > 0 ? (stock + cam.uds) / vel : (stock + cam.uds > 0 ? Infinity : 0),
+        coberturaCritica: critica,
+        enCamino: cam.uds, pedidos: cam.pedidos,
+        precio: vel > 0 ? precioPeso / vel : 0,
+        costeEstimado: neto * g.coste,
+        margenDias: margen,
+        limite: margen == null ? null : A.addDays(r, margen),
+        mercados: mercados.sort((a, b) => (grav[a.estado] - grav[b.estado]) || b.recomendado - a.recomendado),
+        apuros: mercados.filter((m) => m.estado === 'ROTURA' || m.estado === 'BAJO'),
+      });
+    });
+
+    filas.sort((a, b) => (grav[a.estado] - grav[b.estado]) ||
+      ((a.margenDias == null ? 9999 : a.margenDias) - (b.margenDias == null ? 9999 : b.margenDias)) ||
+      b.costeEstimado - a.costeEstimado);
+    cache.marca = marca; cache.filas = filas;
+    return filas;
+  }
+
+  const porPedir = () => reposicion().filter((f) => (f.estado === 'ROTURA' || f.estado === 'BAJO') && f.neto > 0);
+
+  /* ======================= persistencia ======================= */
+  function normalizar(p) {
+    p.lineas = (p.lineas || []).filter((l) => l.sku && (Number(l.unidades) || 0) > 0)
+      .map((l) => ({
+        sku: l.sku, unidades: Math.max(0, Math.round(Number(l.unidades) || 0)),
+        coste: Number(l.coste) || 0, pais: l.pais || '',
+        recibidas: Math.max(0, Math.round(Number(l.recibidas) || 0)),
+      }));
+    const mercancia = A.sum(p.lineas, (l) => l.unidades * l.coste);
+    p.extras = Number(p.extras) || 0;
+    /* Contrato con caja.js: importe y fechaPago mueven la tesorería, unidades y
+       sku alimentan su tabla. Se recalculan siempre desde las líneas. */
+    p.importe = Math.round((mercancia + p.extras) * 100) / 100;
+    p.unidades = A.sum(p.lineas, (l) => l.unidades);
+    p.recibidas = A.sum(p.lineas, (l) => l.recibidas);
+    const skus = A.uniq(p.lineas.map((l) => l.sku));
+    p.sku = skus.length === 1 ? skus[0] : '';
+    const pr = proveedor(p.proveedorId);
+    if (pr) p.proveedor = pr.nombre;
+    /* Un pedido anulado no puede seguir comprometiendo caja: se guarda su fecha
+       de pago aparte para poder revivirlo sin perder el dato. */
+    if (p.estado === 'cancelado') {
+      if (p.fechaPago) { p.fechaPagoAnulada = p.fechaPago; p.fechaPago = ''; }
+    } else if (!p.fechaPago && p.fechaPagoAnulada) {
+      p.fechaPago = p.fechaPagoAnulada; delete p.fechaPagoAnulada;
+    }
+    return p;
+  }
+
+  function guardarPedido(p, esNueva) {
+    normalizar(p);
+    const l = compras();
+    const i = l.findIndex((x) => x.id === p.id);
+    if (i >= 0) l[i] = p; else l.unshift(p);
+    A.Store.save();
+    A.Audit.log('compra:' + (esNueva ? 'alta' : 'editada'), {
+      entidad: 'compra', ref: etiqueta(p), sku: p.sku, campo: 'estado', despues:
+        (EST.get(p.estado) || ['', p.estado])[1] + ' · ' + F.eur(p.importe) + ' · ' + F.n(p.unidades) + ' uds',
+    });
+    A.Bus.emit('datos:cambio');
+  }
+
+  function borrarPedido(p) {
+    A.DB().compras = compras().filter((x) => x.id !== p.id);
+    A.Store.save();
+    A.Audit.log('compra:baja', { entidad: 'compra', ref: etiqueta(p), antes: F.eur(p.importe) });
+    A.Bus.emit('datos:cambio');
+  }
+
+  /* ======================= entrada en inventario ======================= */
+  function entradaInventario(p) {
+    const db = A.DB(), r = ref();
+    let uds = 0, sinDestino = 0;
+    lineasDe(p).forEach((l) => {
+      const n = Number(l.recibidas) || 0;
+      if (!n || !l.sku) return;
+      if (!l.pais) { sinDestino += n; return; }
+      const fila = db.inventario.find((i) => i.sku === l.sku && i.pais === l.pais);
+      const antes = fila ? (fila.disponible || 0) : 0;
+      if (fila) { fila.disponible = antes + n; fila.fecha = r; }
+      else db.inventario.push({ sku: l.sku, pais: l.pais, disponible: n, reservado: 0, transito: 0, fecha: r });
+      uds += n;
+      A.Audit.log('inventario:entrada', {
+        entidad: 'inventario', ref: l.sku + ' · ' + l.pais, sku: l.sku, pais: l.pais,
+        campo: 'disponible', antes, despues: antes + n,
+        motivo: 'Recepción del pedido de compra «' + etiqueta(p) + '»',
+      });
+    });
+    p.entradaInventario = r;
+    p.udsEntrada = uds;
+    A.Store.save();
+    A.Bus.emit('datos:cambio');
+    return { uds, sinDestino };
+  }
+
+  function ofrecerEntrada(p) {
+    const ls = lineasDe(p).filter((l) => (Number(l.recibidas) || 0) > 0);
+    if (!ls.length) return;
+    const conDestino = ls.filter((l) => l.pais);
+    const sinDestino = ls.filter((l) => !l.pais);
+    const html = `
+      <p>El pedido «<b>${A.esc(etiqueta(p))}</b>» queda marcado como recibido. ¿Sumo las unidades al stock
+      disponible de cada mercado? Si el inventario lo vas a reimportar desde el informe de Amazon, di que no
+      para no contarlo dos veces.</p>
+      <div class="cascada" style="margin-top:10px">
+        ${conDestino.map((l) => `<div class="ln"><span>${A.esc(l.sku)} · <b class="pais">${A.esc(l.pais)}</b></span>
+          <b class="pos">+${F.n(l.recibidas)} uds</b></div>`).join('')}
+        ${sinDestino.length ? `<div class="ln"><span>Sin mercado de destino asignado</span>
+          <b>${F.n(A.sum(sinDestino, (l) => l.recibidas))} uds</b></div>` : ''}
+      </div>
+      ${sinDestino.length ? `<div class="aviso warn" style="margin-top:12px"><div>
+        <h4>Hay líneas sin mercado de destino</h4>
+        <p>Esas ${F.n(A.sum(sinDestino, (l) => l.recibidas))} unidades no se pueden dar de alta en ningún inventario.
+        Edita el pedido y asigna el país a cada línea si quieres que entren.</p></div></div>` : ''}`;
+    UI.modal('Dar entrada en el inventario', html, [
+      { t: 'No, solo marcar como recibido', sec: true },
+      {
+        t: 'Sumar al inventario', fn: () => {
+          A.Tareas.run('Entrada de mercancía', async () => {
+            const res = entradaInventario(p);
+            pintar();
+            if (!res.uds) throw new Error('Ninguna línea tenía mercado de destino: no se ha tocado el inventario.');
+            return F.n(res.uds) + ' uds dadas de alta' + (res.sinDestino ? ' · ' + F.n(res.sinDestino) + ' sin destino, fuera' : '');
+          }).catch(() => { });
+        },
+      },
+    ]);
+  }
+
+  /* ======================= ficha del pedido ======================= */
+  function optsSku(sel) {
+    const activos = Q.productos(true);
+    /* Un SKU descatalogado que ya está en el pedido tiene que seguir viéndose. */
+    const extra = sel && !activos.some((p) => p.sku === sel)
+      ? `<option value="${A.esc(sel)}" selected>${A.esc(sel)} · (fuera del catálogo activo)</option>` : '';
+    return ['<option value="">— elige producto —</option>', extra].concat(activos.map((p) =>
+      `<option value="${A.esc(p.sku)}" ${p.sku === sel ? 'selected' : ''}>${A.esc(p.sku)} · ${A.esc((p.titulo || '').slice(0, 44))}</option>`)).join('');
+  }
+  function optsPais(sel) {
+    return ['<option value="">— sin destino —</option>'].concat(Q.paises().map((p) =>
+      `<option value="${p}" ${p === sel ? 'selected' : ''}>${p}</option>`)).join('');
+  }
+
+  function ficha(orig, esNueva) {
+    const p = JSON.parse(JSON.stringify(orig));
+    p.id = p.id || A.uid('cmp');
+    p.estado = p.estado || (esNueva ? 'borrador' : estadoDe(p));
+    p.lineas = lineasDe(p).map((l) => Object.assign({ recibidas: 0, pais: '' }, l));
+    if (!p.lineas.length) p.lineas.push({ sku: '', unidades: 0, coste: 0, pais: '', recibidas: 0 });
+    if (!p.fechaPago) p.fechaPago = ref();
+
+    const provs = ['<option value="">— sin proveedor —</option>'].concat(proveedores().map((x) =>
+      `<option value="${A.esc(x.id)}" ${x.id === p.proveedorId ? 'selected' : ''}>${A.esc(x.nombre)}</option>`)).join('');
+
+    const html = `
+      <div class="grid g2" style="gap:12px">
+        <label class="f">Concepto<input id="cpCon" type="text" value="${A.esc(p.concepto || '')}" placeholder="p. ej. Contenedor cinta 50 mm"></label>
+        <label class="f">Referencia / nº de proforma<input id="cpRef" type="text" value="${A.esc(p.referencia || '')}"></label>
+      </div>
+      <div class="grid g2" style="gap:12px;margin-top:10px">
+        <label class="f">Proveedor<select id="cpProv">${provs}</select></label>
+        <label class="f">Estado<select id="cpEstado">${ESTADOS.map(([k, t]) =>
+      `<option value="${k}" ${p.estado === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+      </div>
+      <p class="sec-note" id="cpEstadoNota" style="margin:6px 0 0"></p>
+
+      <h3 style="margin:18px 0 8px">Líneas del pedido</h3>
+      <div id="cpLineas"></div>
+      <button class="btn sec xs" id="cpAdd" type="button">+ Añadir línea</button>
+      <div class="grid g2" style="gap:12px;margin-top:12px">
+        <label class="f">Transporte, aranceles y otros (€)<input id="cpExtras" type="number" step="0.01" value="${Number(p.extras) || 0}"></label>
+        <div class="cascada" style="align-self:end">
+          <div class="ln"><span>Mercancía</span><b id="cpMerc">—</b></div>
+          <div class="ln"><span>Otros costes</span><b id="cpEx2">—</b></div>
+          <div class="ln tot"><span>Total del pedido</span><b id="cpTot">—</b></div>
+        </div>
+      </div>
+
+      <div class="grid g2" style="gap:12px;margin-top:14px">
+        <label class="f">Fecha de pago<input id="cpFecha" type="date" value="${p.fechaPago || ''}"></label>
+        <label class="f">Llegada prevista<input id="cpLlega" type="date" value="${p.fechaLlegada || ''}"></label>
+      </div>
+      <label class="f" style="margin-top:10px">Notas<input id="cpNota" type="text" value="${A.esc(p.nota || '')}" placeholder="incoterm, transitario, incidencias…"></label>
+      <div id="cpAviso" class="aviso" style="margin-top:12px"></div>
+      <p class="sec-note" style="margin-bottom:0">La <b>fecha de pago</b> es la que mueve la tesorería en el flujo de caja;
+      la de <b>llegada</b> es la que descuenta de la reposición y alimenta el calendario. El coste unitario que pongas aquí
+      no cambia el COGS del histórico: eso se hace en la ficha del producto.</p>`;
+
+    const m = UI.modal(esNueva ? 'Nuevo pedido de compra' : 'Pedido de compra', html, [
+      { t: 'Cancelar', sec: true },
+      esNueva ? null : {
+        t: 'Eliminar', dan: true, fn: () => {
+          UI.confirmar('¿Eliminar el pedido «' + etiqueta(p) + '»? Dejará de contar en la tesorería y en la cobertura.', () => {
+            borrarPedido(p); pintar();
+          });
+          return false;
+        },
+      },
+      {
+        t: esNueva ? 'Crear pedido' : 'Guardar', fn: (el) => {
+          const v = leer(el);
+          if (!v.lineas.length) { alert('Añade al menos una línea con producto y unidades.'); return false; }
+          if (v.estado !== 'borrador' && v.estado !== 'cancelado' && !v.fechaPago) {
+            alert('Pon la fecha de pago: es la que mueve la tesorería.'); return false;
+          }
+          const antes = estadoDe(orig);
+          Object.assign(p, v);
+          guardarPedido(p, esNueva);
+          pintar();
+          if (p.estado === 'recibido' && antes !== 'recibido' && !p.entradaInventario) ofrecerEntrada(p);
+        },
+      },
+    ].filter(Boolean));
+
+    const el = m.el;
+    const cajaLineas = el.querySelector('#cpLineas');
+
+    function filaLinea(l) {
+      return UI.el(`<div class="cp-ln" style="display:grid;grid-template-columns:2.1fr .6fr .8fr .7fr .7fr auto;gap:8px;align-items:end;margin-bottom:8px">
+        <label class="f">Producto<select data-k="sku">${optsSku(l.sku)}</select></label>
+        <label class="f">Uds<input data-k="unidades" type="number" min="0" step="1" value="${Number(l.unidades) || 0}"></label>
+        <label class="f">Coste ud (€)<input data-k="coste" type="number" min="0" step="0.0001" value="${Number(l.coste) || 0}"></label>
+        <label class="f">Destino<select data-k="pais">${optsPais(l.pais)}</select></label>
+        <label class="f">Recibidas<input data-k="recibidas" type="number" min="0" step="1" value="${Number(l.recibidas) || 0}"></label>
+        <button class="btn sec xs" type="button" data-x="1" title="Quitar la línea">✕</button>
+      </div>`);
+    }
+    function conectarLinea(fila) {
+      fila.querySelector('[data-x]').addEventListener('click', () => {
+        if (cajaLineas.querySelectorAll('.cp-ln').length > 1) { fila.remove(); refrescar(); }
+      });
+      fila.querySelectorAll('select,input').forEach((i) => {
+        i.addEventListener('input', refrescar); i.addEventListener('change', refrescar);
+      });
+    }
+    function anadirLinea(l) {
+      const fila = filaLinea(l || { sku: '', unidades: 0, coste: 0, pais: '', recibidas: 0 });
+      cajaLineas.appendChild(fila);
+      conectarLinea(fila);
+      return fila;
+    }
+    /* Al elegir producto se propone su coste vigente si la línea aún no tiene uno. */
+    cajaLineas.addEventListener('change', (e) => {
+      if (e.target.dataset.k !== 'sku') return;
+      const fila = e.target.closest('.cp-ln');
+      const inp = fila.querySelector('[data-k="coste"]');
+      if (!(parseFloat(inp.value) > 0) && e.target.value) inp.value = Calc.coste(e.target.value, ref());
+      refrescar();
+    });
+
+    const leer = (raiz) => {
+      const lineas = [...raiz.querySelectorAll('.cp-ln')].map((f) => ({
+        sku: f.querySelector('[data-k="sku"]').value,
+        unidades: parseInt(f.querySelector('[data-k="unidades"]').value, 10) || 0,
+        coste: parseFloat(f.querySelector('[data-k="coste"]').value) || 0,
+        pais: f.querySelector('[data-k="pais"]').value,
+        recibidas: parseInt(f.querySelector('[data-k="recibidas"]').value, 10) || 0,
+      })).filter((l) => l.sku && l.unidades > 0);
+      return {
+        concepto: raiz.querySelector('#cpCon').value,
+        referencia: raiz.querySelector('#cpRef').value,
+        proveedorId: raiz.querySelector('#cpProv').value,
+        estado: raiz.querySelector('#cpEstado').value,
+        extras: parseFloat(raiz.querySelector('#cpExtras').value) || 0,
+        fechaPago: raiz.querySelector('#cpFecha').value,
+        fechaLlegada: raiz.querySelector('#cpLlega').value,
+        nota: raiz.querySelector('#cpNota').value,
+        lineas,
+      };
+    };
+
+    function refrescar() {
+      const v = leer(el);
+      const merc = A.sum(v.lineas, (l) => l.unidades * l.coste);
+      el.querySelector('#cpMerc').textContent = F.eur(merc);
+      el.querySelector('#cpEx2').textContent = F.eur(v.extras);
+      el.querySelector('#cpTot').textContent = F.eur(merc + v.extras);
+      const e = EST.get(v.estado);
+      el.querySelector('#cpEstadoNota').textContent = e ? e[3] : '';
+
+      const uds = A.sum(v.lineas, (l) => l.unidades);
+      const pr = proveedor(v.proveedorId);
+      const avisos = [];
+      if (pr && pr.minimoPedido > 0 && merc + v.extras < pr.minimoPedido) {
+        avisos.push(`El pedido no llega al mínimo de <b>${A.esc(pr.nombre)}</b> (${F.eur(pr.minimoPedido, 0)}): faltan ${F.eur(pr.minimoPedido - merc - v.extras)}.`);
+      }
+      if (v.fechaPago && v.fechaLlegada && v.fechaLlegada < v.fechaPago) {
+        avisos.push('La llegada es anterior al pago: revisa las fechas o el calendario saldrá al revés.');
+      }
+      if (pr && pr.leadTimeDias > 0 && v.fechaPago && !v.fechaLlegada) {
+        avisos.push(`Con el plazo de ${A.esc(pr.nombre)} (${F.dias(pr.leadTimeDias)}) la llegada caería sobre el <b>${F.fecha(A.addDays(v.fechaPago, pr.leadTimeDias))}</b>.`);
+      }
+      const cu = uds ? (merc + v.extras) / uds : 0;
+      const av = el.querySelector('#cpAviso');
+      av.className = 'aviso' + (avisos.length ? ' warn' : '');
+      av.innerHTML = `<div><h4>${F.n(uds)} unidades a ${F.eur(cu, 3)} de coste puesto en almacén <span class="est">EST.</span></h4>
+        ${avisos.length ? '<ul>' + avisos.map((x) => '<li>' + x + '</li>').join('') + '</ul>'
+          : '<p>Incluye transporte y aranceles repartidos entre todas las unidades del pedido.</p>'}</div>`;
+    }
+
+    p.lineas.forEach(anadirLinea);
+    el.querySelector('#cpAdd').addEventListener('click', () => { anadirLinea(); refrescar(); });
+    /* Marcar «recibido» rellena las unidades recibidas con las pedidas: se ven
+       en pantalla y se pueden corregir antes de guardar. */
+    el.querySelector('#cpEstado').addEventListener('change', (ev) => {
+      if (ev.target.value === 'recibido') {
+        cajaLineas.querySelectorAll('.cp-ln').forEach((f) => {
+          const rec = f.querySelector('[data-k="recibidas"]');
+          if (!(parseInt(rec.value, 10) > 0)) rec.value = f.querySelector('[data-k="unidades"]').value;
+        });
+      }
+      refrescar();
+    });
+    ['#cpExtras', '#cpProv', '#cpFecha', '#cpLlega', '#cpCon', '#cpRef'].forEach((s) => {
+      el.querySelector(s).addEventListener('input', refrescar);
+      el.querySelector(s).addEventListener('change', refrescar);
+    });
+    refrescar();
+  }
+
+  /* Crea un pedido ya relleno con lo que hay que reponer, repartiendo las
+     unidades entre los mercados que las necesitan. */
+  function pedidoDesde(filas) {
+    const lineas = [];
+    filas.forEach((f) => {
+      const conNecesidad = f.mercados.filter((m) => m.recomendado > 0);
+      const totalRec = A.sum(conNecesidad, (m) => m.recomendado);
+      if (!conNecesidad.length || !totalRec) {
+        lineas.push({ sku: f.sku, unidades: f.neto, coste: f.coste, pais: '', recibidas: 0 });
+        return;
+      }
+      let repartido = 0;
+      conNecesidad.forEach((m, i) => {
+        const uds = i === conNecesidad.length - 1
+          ? f.neto - repartido
+          : Math.round(f.neto * m.recomendado / totalRec);
+        repartido += uds;
+        if (uds > 0) lineas.push({ sku: f.sku, unidades: uds, coste: f.coste, pais: m.pais, recibidas: 0 });
+      });
+    });
+    const limites = filas.map((f) => f.limite).filter(Boolean).sort();
+    ficha({
+      concepto: filas.length === 1 ? 'Reposición ' + filas[0].sku : 'Reposición ' + filas.length + ' referencias',
+      estado: 'borrador', lineas,
+      fechaPago: limites.length ? (limites[0] < ref() ? ref() : limites[0]) : ref(),
+      nota: 'Generado desde el plan de reposición del ' + F.fecha(ref()),
+    }, true);
+  }
+
+  /* ======================= ficha del proveedor ======================= */
+  function fichaProveedor(orig, esNuevo) {
+    const p = Object.assign({
+      id: A.uid('prv'), nombre: '', contacto: '', email: '', pais: '',
+      leadTimeDias: A.DB().settings.leadTimeDias, minimoPedido: 0, condicionesPago: '', nota: '',
+    }, orig);
+    const html = `
+      <div class="grid g2" style="gap:12px">
+        <label class="f">Nombre<input id="pvNom" type="text" value="${A.esc(p.nombre)}" placeholder="p. ej. Ningbo Tape Co."></label>
+        <label class="f">Persona de contacto<input id="pvCon" type="text" value="${A.esc(p.contacto)}"></label>
+      </div>
+      <div class="grid g2" style="gap:12px;margin-top:10px">
+        <label class="f">Email<input id="pvMail" type="text" value="${A.esc(p.email)}"></label>
+        <label class="f">País<input id="pvPais" type="text" value="${A.esc(p.pais)}" placeholder="CN, ES…"></label>
+      </div>
+      <div class="grid g2" style="gap:12px;margin-top:10px">
+        <label class="f">Plazo de entrega (días)<input id="pvLead" type="number" min="0" value="${Number(p.leadTimeDias) || 0}"></label>
+        <label class="f">Pedido mínimo (€)<input id="pvMin" type="number" min="0" step="1" value="${Number(p.minimoPedido) || 0}"></label>
+      </div>
+      <label class="f" style="margin-top:10px">Condiciones de pago<input id="pvCond" type="text" value="${A.esc(p.condicionesPago)}" placeholder="30 % anticipo + 70 % contra BL"></label>
+      <label class="f" style="margin-top:10px">Nota<input id="pvNota" type="text" value="${A.esc(p.nota)}"></label>
+      <p class="sec-note" style="margin:12px 0 0">El plazo de entrega de este proveedor manda sobre el del producto al
+      calcular cuándo hay que lanzar cada pedido de sus referencias.</p>`;
+
+    UI.modal(esNuevo ? 'Nuevo proveedor' : 'Proveedor', html, [
+      { t: 'Cancelar', sec: true },
+      esNuevo ? null : {
+        t: 'Eliminar', dan: true, fn: () => {
+          const usados = compras().filter((x) => x.proveedorId === p.id).length;
+          UI.confirmar(usados
+            ? 'Hay ' + usados + ' pedidos de compra asociados a «' + p.nombre + '». Se quedarán sin proveedor. ¿Seguir?'
+            : '¿Eliminar el proveedor «' + p.nombre + '»?', () => {
+              A.DB().proveedores = proveedores().filter((x) => x.id !== p.id);
+              A.Store.save();
+              A.Audit.log('proveedor:baja', { entidad: 'proveedor', ref: p.nombre });
+              A.Bus.emit('datos:cambio'); pintar();
+            });
+          return false;
+        },
+      },
+      {
+        t: esNuevo ? 'Añadir proveedor' : 'Guardar', fn: (el) => {
+          const v = {
+            id: p.id,
+            nombre: el.querySelector('#pvNom').value.trim(),
+            contacto: el.querySelector('#pvCon').value,
+            email: el.querySelector('#pvMail').value,
+            pais: el.querySelector('#pvPais').value.trim().toUpperCase(),
+            leadTimeDias: parseInt(el.querySelector('#pvLead').value, 10) || 0,
+            minimoPedido: parseFloat(el.querySelector('#pvMin').value) || 0,
+            condicionesPago: el.querySelector('#pvCond').value,
+            nota: el.querySelector('#pvNota').value,
+          };
+          if (!v.nombre) { alert('El proveedor necesita un nombre.'); return false; }
+          const l = proveedores();
+          const i = l.findIndex((x) => x.id === v.id);
+          if (i >= 0) l[i] = v; else l.push(v);
+          /* El nombre viaja también a los pedidos: caja.js lo muestra tal cual. */
+          compras().forEach((c) => { if (c.proveedorId === v.id) c.proveedor = v.nombre; });
+          A.Store.save();
+          A.Audit.log('proveedor:' + (i >= 0 ? 'editado' : 'alta'), {
+            entidad: 'proveedor', ref: v.nombre, despues: F.dias(v.leadTimeDias) + ' de plazo',
+          });
+          A.Bus.emit('datos:cambio');
+          pintar();
+        },
+      },
+    ].filter(Boolean));
+  }
+
+  /* ======================= calendario de llegadas ======================= */
+  function calendario() {
+    const r = ref();
+    const filas = [];
+    for (let i = 0; i < SEMANAS; i++) {
+      const ini = A.addDays(r, i * 7), fin = A.addDays(ini, 6);
+      const llegan = compras().filter((p) => {
+        const e = estadoDe(p);
+        return p.fechaLlegada >= ini && p.fechaLlegada <= fin && e !== 'cancelado' && e !== 'recibido';
+      });
+      const pagos = compras().filter((p) => pagoPendiente(p) && p.fechaPago >= ini && p.fechaPago <= fin);
+      filas.push({
+        i, ini, fin,
+        llegan, uds: A.sum(llegan, (p) => pendiente(p).falta),
+        libera: A.sum(llegan, (p) => pendiente(p).importe),
+        pagos, compromete: A.sum(pagos, (p) => Number(p.importe) || 0),
+      });
+    }
+    return filas;
+  }
+
+  /* ======================= pintado ======================= */
+  function pintar() {
+    if (!cont) return;
+    cont.innerHTML = '';
+    const raiz = UI.el('<div></div>');
+    const r = ref();
+    const lista = compras();
+    const curso = lista.filter(enCurso);
+    const retrasados = curso.filter((p) => p.fechaLlegada && p.fechaLlegada < r);
+    const udsCamino = A.sum(curso, (p) => pendiente(p).falta);
+    const capital = A.sum(curso, (p) => pendiente(p).importe);
+    const pagos = lista.filter((p) => pagoPendiente(p) && p.fechaPago >= r)
+      .sort((a, b) => a.fechaPago.localeCompare(b.fechaPago));
+    const llegadas = lista.filter((p) => enCurso(p) && p.fechaLlegada && p.fechaLlegada >= r)
+      .sort((a, b) => a.fechaLlegada.localeCompare(b.fechaLlegada));
+    const pedir = porPedir();
+
+    /* ---------- KPIs ---------- */
+    raiz.appendChild(UI.el(`<div class="grid g4">
+      ${UI.kpi({
+      label: 'Pedidos en curso', valor: F.n(curso.length),
+      sec: `${F.n(lista.filter((p) => estadoDe(p) === 'borrador').length)} en borrador · ${F.n(lista.length)} en total`,
+      tono: retrasados.length ? 'crit' : curso.length ? '' : 'warn',
+    })}
+      ${UI.kpi({
+      label: 'Unidades en camino', valor: F.n(udsCamino),
+      sec: udsCamino ? 'Pendientes de recibir de todos los pedidos abiertos' : 'Nada pedido al proveedor ahora mismo',
+    })}
+      ${UI.kpi({
+      label: 'Capital comprometido', valor: F.eur(capital, 0),
+      sec: 'Mercancía pagada o comprometida que aún no está en el almacén',
+      tono: capital ? 'info' : '',
+    })}
+      ${UI.kpi({
+      label: 'Próximo pago', valor: pagos.length ? F.eur(pagos[0].importe, 0) : '—',
+      sec: pagos.length ? `${A.esc(etiqueta(pagos[0]))} · ${F.fecha(pagos[0].fechaPago)} (en ${F.dias(A.diffDias(r, pagos[0].fechaPago))})`
+        : 'Sin pagos pendientes anotados',
+      tono: pagos.length && A.diffDias(r, pagos[0].fechaPago) <= 7 ? 'warn' : '',
+    })}
+      ${UI.kpi({
+      label: 'Próxima llegada', valor: llegadas.length ? F.fecha(llegadas[0].fechaLlegada) : '—',
+      sec: llegadas.length ? `${A.esc(etiqueta(llegadas[0]))} · ${F.n(pendiente(llegadas[0]).falta)} uds en ${F.dias(A.diffDias(r, llegadas[0].fechaLlegada))}`
+        : 'Ningún pedido con fecha de llegada por delante',
+    })}
+    </div>`));
+
+    if (retrasados.length) {
+      raiz.appendChild(UI.el(`<div class="aviso crit" style="margin-top:16px"><div>
+        <h4>${F.n(retrasados.length)} ${retrasados.length === 1 ? 'pedido ha pasado' : 'pedidos han pasado'} su fecha de llegada y siguen sin recibirse</h4>
+        <ul>${retrasados.sort((a, b) => a.fechaLlegada.localeCompare(b.fechaLlegada)).map((p) =>
+        `<li><b>${A.esc(etiqueta(p))}</b>${p.proveedor ? ' · ' + A.esc(p.proveedor) : ''} — prevista el ${F.fecha(p.fechaLlegada)},
+         ${F.dias(A.diffDias(p.fechaLlegada, r))} de retraso, ${F.n(pendiente(p).falta)} uds y ${F.eur(pendiente(p).importe)} parados.</li>`).join('')}</ul>
+        <p>Reclama al proveedor o al transitario y, si no hay fecha nueva, ajusta la llegada prevista: la reposición
+        está contando con esa mercancía.</p></div></div>`));
+    }
+
+    /* ---------- qué hay que pedir ---------- */
+    const barraPedir = UI.el(`<div class="toolbar" style="margin-top:22px">
+      <h2 style="margin:0">Qué hay que pedir</h2>
+      <span class="mini">Sobre el ritmo de venta real y el plazo de cada proveedor, descontando lo ya pedido</span>
+      <span class="sp"></span>
+      ${pedir.length ? '<button class="btn" id="cpTodo">Crear pedido con las ' + F.n(pedir.length) + ' referencias</button>' : ''}
+    </div>`);
+    raiz.appendChild(barraPedir);
+
+    const colsPedir = [
+      {
+        k: 'sku', t: 'Producto', cls: 'wrap',
+        r: (f) => `<b class="mono">${A.esc(f.sku)}</b><div class="mini">${A.esc((f.titulo || '').slice(0, 62))}</div>` +
+          (f.apuros.length ? `<div class="mini">${f.apuros.slice(0, 4).map((m) =>
+            `<span class="pais">${A.esc(m.pais)}</span> ${m.estado.toLowerCase()}${isFinite(m.cobertura) ? ' ' + F.dias(m.cobertura) : ''}`).join(' · ')}</div>` : ''),
+      },
+      {
+        k: 'estado', t: 'Estado', sv: (f) => f.estado,
+        r: (f) => UI.badge(f.estado, f.estado === 'ROTURA' ? 'crit' : 'warn'),
+      },
+      { k: 'stock', t: 'Stock', num: true, r: (f) => `${F.n(f.stock)}<div class="mini">${F.n(f.disponible)} + ${F.n(f.transito)} tránsito</div>` },
+      { k: 'vel', t: 'Ritmo', num: true, r: (f) => `${F.n(f.vel, 1)}<div class="mini">uds/día</div>` },
+      {
+        k: 'coberturaCritica', t: 'Cobertura', num: true,
+        sv: (f) => (f.coberturaCritica == null || !isFinite(f.coberturaCritica) ? 9999 : f.coberturaCritica),
+        r: (f) => `${f.coberturaCritica == null ? '<span class="mini">sin ventas</span>'
+          : isFinite(f.coberturaCritica) ? F.dias(f.coberturaCritica) : '∞'}
+          <div class="mini" title="Plazo de entrega según ${A.esc(f.leadOrigen)}">${f.mercados.length > 1 ? 'peor mercado · ' : ''}plazo ${F.dias(f.lead)}</div>`,
+      },
+      {
+        k: 'enCamino', t: 'Ya pedido', num: true,
+        r: (f) => f.enCamino
+          ? `${F.n(f.enCamino)}<div class="mini">${F.n(f.pedidos.length)} ${f.pedidos.length === 1 ? 'pedido' : 'pedidos'} · cubre ${isFinite(f.coberturaConPedido) ? F.dias(f.coberturaConPedido) : '∞'}</div>`
+          : '<span class="mini">nada</span>',
+      },
+      { k: 'neto', t: 'Hay que pedir', num: true, r: (f) => `<b>${F.n(f.neto)}</b><div class="mini">uds</div>` },
+      {
+        k: 'costeEstimado', t: 'Coste', num: true,
+        r: (f) => f.coste ? `${F.eur(f.costeEstimado, 0)} <span class="est">EST.</span><div class="mini">${F.eur(f.coste, 3)}/ud</div>`
+          : '<span class="mini">sin coste en ficha</span>',
+      },
+      {
+        k: 'limite', t: 'Lanzar antes del', sv: (f) => f.limite || '9999',
+        r: (f) => {
+          if (!f.limite) return '<span class="mini">sin datos suficientes</span>';
+          const d = f.margenDias;
+          return `<b class="${d <= 0 ? 'neg' : ''}">${F.fecha(f.limite)}</b>
+            <div class="mini">${d <= 0 ? 'ya vas ' + F.dias(-d) + ' tarde' : 'quedan ' + F.dias(d)}</div>`;
+        },
+      },
+      {
+        k: 'acc', t: '', sort: false,
+        r: (f) => `<button class="btn sec xs" data-crear="${A.esc(f.sku)}">Crear pedido</button>`,
+      },
+    ];
+    raiz.appendChild(UI.tabla(colsPedir, pedir, {
+      vacio: pedir.length === 0 && reposicion().length === 0
+        ? 'No hay fichas de inventario con las que calcular la reposición. Importa el inventario FBA desde Datos.'
+        : 'Nada en rotura ni bajo mínimos: con lo que hay en stock y lo ya pedido llegas al próximo ciclo.',
+    }));
+    if (pedir.length) {
+      raiz.appendChild(UI.el(`<p class="sec-note" style="margin-top:10px">
+        Las unidades recomendadas cubren el plazo de entrega más el stock de seguridad y el ciclo de pedido
+        (${F.dias(A.DB().settings.stockSeguridadDias)} y ${F.dias(A.DB().settings.cicloPedidoDias)} según los ajustes de inventario),
+        y ya descuentan lo que tienes en tránsito y lo que hay pedido al proveedor. El coste es una estimación con el
+        coste vigente en la ficha del producto: no incluye subidas de precio ni transporte que no hayas anotado.</p>`));
+    }
+
+    /* ---------- pedidos de compra ---------- */
+    const filtros = [['curso', 'En curso'], ['todos', 'Todos'], ['borrador', 'Borradores'],
+    ['recibido', 'Recibidos'], ['cancelado', 'Cancelados']];
+    const barra = UI.el(`<div class="toolbar" style="margin-top:24px">
+      <h2 style="margin:0">Pedidos de compra</h2>
+      <div class="seg" id="cpFiltro">${filtros.map(([k, t]) =>
+      `<button data-f="${k}" class="${k === filtroEstado ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <span class="sp"></span>
+      <button class="btn" id="cpNuevo">+ Nuevo pedido</button>
+    </div>`);
+    raiz.appendChild(barra);
+
+    const visibles = lista.filter((p) => {
+      const e = estadoDe(p);
+      if (filtroEstado === 'todos') return true;
+      if (filtroEstado === 'curso') return enCurso(p);
+      return e === filtroEstado;
+    }).sort((a, b) => String(a.fechaLlegada || a.fechaPago || '').localeCompare(String(b.fechaLlegada || b.fechaPago || '')));
+
+    const colsPed = [
+      {
+        k: 'concepto', t: 'Pedido', cls: 'wrap',
+        sv: (p) => etiqueta(p),
+        r: (p) => `<b>${A.esc(etiqueta(p))}</b><div class="mini">${A.esc(p.proveedor || 'sin proveedor')}${p.nota ? ' · ' + A.esc(p.nota.slice(0, 40)) : ''}</div>`,
+      },
+      {
+        k: 'estado', t: 'Estado', sv: (p) => estadoDe(p),
+        r: (p) => {
+          const e = EST.get(estadoDe(p)) || ['', estadoDe(p), 'mut'];
+          const tarde = enCurso(p) && p.fechaLlegada && p.fechaLlegada < r;
+          return UI.badge(e[1], tarde ? 'crit' : e[2]) + (tarde ? '<div class="mini neg">retrasado</div>' : '');
+        },
+      },
+      {
+        k: 'lineas', t: 'Contenido', cls: 'wrap', sort: false,
+        r: (p) => {
+          const ls = lineasDe(p);
+          if (!ls.length) return '<span class="mini">sin líneas</span>';
+          return ls.slice(0, 3).map((l) => `<span class="mono">${A.esc(l.sku || '—')}</span> ${F.n(l.unidades)} uds${l.pais ? ' <span class="pais">' + A.esc(l.pais) + '</span>' : ''}`).join('<br>') +
+            (ls.length > 3 ? `<div class="mini">y ${F.n(ls.length - 3)} líneas más</div>` : '');
+        },
+      },
+      {
+        k: 'unidades', t: 'Uds', num: true, sv: (p) => pendiente(p).uds,
+        r: (p) => {
+          const q = pendiente(p);
+          return F.n(q.uds) +
+            (q.recibidas ? `<div class="mini">${F.n(q.recibidas)} recibidas</div>` : '') +
+            (p.entradaInventario ? `<div class="mini">${F.n(p.udsEntrada || 0)} al inventario el ${F.fechaCorta(p.entradaInventario)}</div>` : '');
+        },
+      },
+      { k: 'importe', t: 'Importe', num: true, r: (p) => `<b>${F.eur(p.importe)}</b>` },
+      {
+        k: 'fechaPago', t: 'Se paga', sv: (p) => p.fechaPago || '',
+        r: (p) => {
+          if (!p.fechaPago) return '<span class="mini">' + (p.fechaPagoAnulada ? 'anulado' : '—') + '</span>';
+          const d = A.diffDias(r, p.fechaPago);
+          return `${F.fecha(p.fechaPago)}<div class="mini">${d < 0 ? 'pagado' : d === 0 ? 'hoy' : 'en ' + F.dias(d)}</div>`;
+        },
+      },
+      {
+        k: 'fechaLlegada', t: 'Llega', sv: (p) => p.fechaLlegada || '',
+        r: (p) => {
+          if (!p.fechaLlegada) return '<span class="mini">sin fecha</span>';
+          const d = A.diffDias(r, p.fechaLlegada);
+          const tarde = enCurso(p) && d < 0;
+          return `<span class="${tarde ? 'neg strong' : ''}">${F.fecha(p.fechaLlegada)}</span>
+            <div class="mini">${tarde ? F.dias(-d) + ' de retraso' : d < 0 ? 'recibido' : 'en ' + F.dias(d)}</div>`;
+        },
+      },
+      { k: 'acc', t: '', sort: false, r: () => '<button class="btn sec xs">Abrir</button>' },
+    ];
+    raiz.appendChild(UI.tabla(colsPed, visibles, {
+      vacio: filtroEstado === 'curso'
+        ? 'No hay ningún pedido en curso. Si tienes mercancía comprometida con el proveedor, anótala: hasta entonces la cobertura y la tesorería van a ciegas.'
+        : 'Sin pedidos en este estado.',
+      rowAttr: (p) => `data-pid="${A.esc(p.id || '')}" style="cursor:pointer"`,
+    }));
+
+    /* ---------- calendario de llegadas ---------- */
+    const cal = calendario();
+    const hayCal = cal.some((f) => f.llegan.length || f.pagos.length);
+    raiz.appendChild(UI.el(`<h2>Calendario de las próximas ${SEMANAS} semanas</h2>`));
+    const maxCal = Math.max(1, ...cal.map((f) => Math.max(f.libera, f.compromete)));
+    const tCal = UI.tabla([
+      { k: 'ini', t: 'Semana', sort: false, r: (f) => `<b>${F.fechaCorta(f.ini)}</b> <span class="mini">a ${F.fechaCorta(f.fin)}</span>` },
+      {
+        k: 'llegan', t: 'Qué llega', cls: 'wrap', sort: false,
+        r: (f) => f.llegan.length
+          ? f.llegan.map((p) => `<b>${A.esc(etiqueta(p))}</b> <span class="mini">${F.n(pendiente(p).falta)} uds${p.proveedor ? ' · ' + A.esc(p.proveedor) : ''}</span>`).join('<br>')
+          : '<span class="mini">—</span>',
+      },
+      { k: 'uds', t: 'Uds', num: true, sort: false, r: (f) => f.uds ? F.n(f.uds) : '<span class="mini">—</span>' },
+      {
+        k: 'libera', t: 'Capital que libera', num: true, sort: false,
+        r: (f) => f.libera ? `<span class="pos">${F.eur(f.libera, 0)}</span>${UI.bar(f.libera / maxCal, 'ok')}` : '<span class="mini">—</span>',
+      },
+      {
+        k: 'compromete', t: 'Capital que compromete', num: true, sort: false,
+        r: (f) => f.compromete ? `<span class="neg">−${F.eur(f.compromete, 0)}</span>${UI.bar(f.compromete / maxCal, 'crit')}` : '<span class="mini">—</span>',
+      },
+      {
+        k: 'pagos', t: 'Qué se paga', cls: 'wrap', sort: false,
+        r: (f) => f.pagos.length
+          ? f.pagos.map((p) => `${A.esc(etiqueta(p))} <span class="mini">${F.eur(p.importe, 0)}</span>`).join('<br>')
+          : '<span class="mini">—</span>',
+      },
+    ], cal, { vacio: 'Sin movimientos previstos.' });
+    raiz.appendChild(tCal);
+    raiz.appendChild(UI.el(`<p class="sec-note" style="margin-top:10px">
+      «Libera» es el valor de la mercancía que deja de estar en tránsito y pasa a ser stock vendible; «compromete»
+      es la salida de caja de los pagos aún pendientes de esa semana, la misma que ve el flujo de caja.
+      ${hayCal ? '' : ' Ahora mismo no hay ni llegadas ni pagos anotados en este horizonte.'}</p>`));
+
+    /* ---------- proveedores ---------- */
+    const provs = proveedores();
+    const usoProv = new Map();
+    lista.forEach((p) => {
+      if (!p.proveedorId) return;
+      const g = usoProv.get(p.proveedorId) || { pedidos: 0, importe: 0, skus: new Set(), ultimo: '' };
+      g.pedidos++;
+      if (estadoDe(p) !== 'cancelado') g.importe += Number(p.importe) || 0;
+      lineasDe(p).forEach((l) => { if (l.sku) g.skus.add(l.sku); });
+      if ((p.fechaPago || '') > g.ultimo) g.ultimo = p.fechaPago || '';
+      usoProv.set(p.proveedorId, g);
+    });
+
+    const barraProv = UI.el(`<div class="toolbar" style="margin-top:24px">
+      <h2 style="margin:0">Proveedores</h2>
+      <span class="mini">Su plazo de entrega manda sobre el del producto al calcular cuándo pedir</span>
+      <span class="sp"></span>
+      <button class="btn sec" id="cpProvNuevo">+ Añadir proveedor</button>
+    </div>`);
+    raiz.appendChild(barraProv);
+
+    const tProv = UI.tabla([
+      {
+        k: 'nombre', t: 'Proveedor', cls: 'wrap',
+        r: (x) => `<b>${A.esc(x.nombre)}</b><div class="mini">${A.esc(x.contacto || '')}${x.email ? ' · ' + A.esc(x.email) : ''}</div>`,
+      },
+      { k: 'pais', t: 'País', r: (x) => x.pais ? `<span class="pais">${A.esc(x.pais)}</span>` : '<span class="mini">—</span>' },
+      { k: 'leadTimeDias', t: 'Plazo', num: true, r: (x) => x.leadTimeDias ? F.dias(x.leadTimeDias) : '<span class="mini">—</span>' },
+      { k: 'condicionesPago', t: 'Pago', cls: 'wrap', r: (x) => x.condicionesPago ? A.esc(x.condicionesPago) : '<span class="mini">—</span>' },
+      { k: 'minimoPedido', t: 'Mínimo', num: true, r: (x) => x.minimoPedido ? F.eur(x.minimoPedido, 0) : '<span class="mini">—</span>' },
+      {
+        k: 'skus', t: 'Referencias', num: true, sv: (x) => (usoProv.get(x.id) || { skus: new Set() }).skus.size,
+        r: (x) => {
+          const g = usoProv.get(x.id);
+          return g && g.skus.size ? F.n(g.skus.size) : '<span class="mini">—</span>';
+        },
+      },
+      {
+        k: 'importe', t: 'Comprado', num: true, sv: (x) => (usoProv.get(x.id) || { importe: 0 }).importe,
+        r: (x) => {
+          const g = usoProv.get(x.id);
+          return g && g.importe ? `${F.eur(g.importe, 0)}<div class="mini">${F.n(g.pedidos)} ${g.pedidos === 1 ? 'pedido' : 'pedidos'}</div>`
+            : '<span class="mini">sin pedidos</span>';
+        },
+      },
+      { k: 'acc', t: '', sort: false, r: () => '<button class="btn sec xs">Editar</button>' },
+    ], provs, {
+      vacio: 'Sin proveedores dados de alta. Añade al menos el habitual: su plazo de entrega es lo que decide cuándo hay que lanzar cada pedido.',
+      rowAttr: (x) => `data-prv="${A.esc(x.id)}" style="cursor:pointer"`,
+    });
+    raiz.appendChild(tProv);
+
+    /* Delegación sobre la raíz: al ordenar una columna, UI.tabla sustituye la
+       tabla entera, así que los manejadores no pueden colgar de cada fila. */
+    raiz.addEventListener('click', (ev) => {
+      const crear = ev.target.closest('[data-crear]');
+      if (crear) {
+        const f = pedir.find((x) => x.sku === crear.dataset.crear);
+        if (f) pedidoDesde([f]);
+        return;
+      }
+      const trP = ev.target.closest('tr[data-pid]');
+      if (trP && trP.dataset.pid) {
+        const p = compras().find((x) => x.id === trP.dataset.pid);
+        if (p) ficha(p, false);
+        return;
+      }
+      const trV = ev.target.closest('tr[data-prv]');
+      if (trV) {
+        const x = proveedores().find((y) => y.id === trV.dataset.prv);
+        if (x) fichaProveedor(x, false);
+      }
+    });
+
+    barra.querySelectorAll('#cpFiltro button').forEach((b) =>
+      b.addEventListener('click', () => { filtroEstado = b.dataset.f; pintar(); }));
+    barra.querySelector('#cpNuevo').addEventListener('click', () => ficha({}, true));
+    barraProv.querySelector('#cpProvNuevo').addEventListener('click', () => fichaProveedor({}, true));
+    const todo = barraPedir.querySelector('#cpTodo');
+    if (todo) todo.addEventListener('click', () => pedidoDesde(pedir));
+
+    cont.appendChild(raiz);
+  }
+
+  /* ======================= detector de alertas ======================= */
+  A.Alertas.registrarDetector(function () {
+    const r = ref();
+    const vivos = [];
+
+    compras().forEach((p) => {
+      if (!enCurso(p)) return;
+      const q = pendiente(p);
+      if (p.fechaLlegada && p.fechaLlegada < r) {
+        const h = 'compras|llegada-vencida|' + p.id + '|';
+        vivos.push(h);
+        A.Alertas.push({
+          hash: h, modulo: 'compras', tipo: 'llegada-vencida', prioridad: 'ALTA', sku: p.sku || '',
+          problema: 'El pedido «' + etiqueta(p) + '» debía haber llegado el ' + F.fecha(p.fechaLlegada) + ' y sigue sin recibirse',
+          metrica: F.dias(A.diffDias(p.fechaLlegada, r)) + ' de retraso · ' + F.n(q.falta) + ' uds · ' + F.eur(q.importe),
+          impacto: q.importe,
+          recomendacion: 'Pide fecha nueva al proveedor o al transitario y actualiza la llegada prevista. ' +
+            'Mientras la fecha sea falsa, la reposición cuenta con mercancía que no está.',
+        });
+      }
+      if (p.fechaPago && pagoPendiente(p)) {
+        const d = A.diffDias(r, p.fechaPago);
+        if (d >= 0 && d <= 7) {
+          const h = 'compras|pago-proximo|' + p.id + '|';
+          vivos.push(h);
+          A.Alertas.push({
+            hash: h, modulo: 'compras', tipo: 'pago-proximo', prioridad: 'INFO', sku: p.sku || '',
+            problema: 'Pago a proveedor en ' + (d === 0 ? 'el día de hoy' : F.dias(d)) + ': «' + etiqueta(p) + '»',
+            metrica: F.eur(p.importe) + ' el ' + F.fecha(p.fechaPago) + (p.proveedor ? ' · ' + p.proveedor : ''),
+            impacto: Number(p.importe) || 0,
+            recomendacion: 'Comprueba en Flujo de caja que hay saldo para esa fecha antes de confirmar la transferencia.',
+          });
+        }
+      }
+    });
+
+    /* Rotura sin pedido en curso. El módulo de inventario ya avisa de la rotura
+       en sí, así que aquí solo se abre aviso propio cuando además nadie ha
+       comprado nada y hay dinero de por medio; el resto va en un único aviso
+       agregado para no tapar la lista con veinte líneas del mismo problema. */
+    const enRotura = reposicion().filter((f) => f.estado === 'ROTURA' && !f.enCamino && f.neto > 0)
+      .map((f) => {
+        const cob = f.coberturaCritica;
+        const diasSin = (cob != null && isFinite(cob)) ? Math.max(0, f.lead - cob) : 0;
+        return Object.assign({}, f, { riesgo: f.vel * diasSin * f.precio, cob });
+      })
+      .sort((a, b) => (b.riesgo - a.riesgo) || (b.costeEstimado - a.costeEstimado));
+    const material = (f) => f.riesgo >= MIN_RIESGO || f.costeEstimado >= MIN_RIESGO;
+    const propias = enRotura.filter(material).slice(0, MAX_AVISOS);
+    const resto = enRotura.filter((f) => propias.indexOf(f) < 0);
+
+    propias.forEach((f) => {
+      const h = 'compras|rotura-sin-pedido|' + f.sku + '|';
+      vivos.push(h);
+      const roturas = f.mercados.filter((m) => m.estado === 'ROTURA').map((m) => m.pais);
+      A.Alertas.push({
+        hash: h, modulo: 'compras', tipo: 'rotura-sin-pedido', prioridad: 'ALTA', sku: f.sku,
+        problema: 'El producto ' + f.sku + ' entra en rotura' +
+          (roturas.length ? ' en ' + roturas.join(', ') : '') + ' y no hay ningún pedido de compra en curso',
+        metrica: F.n(f.stock) + ' uds en total, ' +
+          (f.cob == null ? 'sin ventas recientes' : (isFinite(f.cob) ? F.dias(f.cob) : '∞') + ' de cobertura en el peor mercado') +
+          ' frente a un plazo de entrega de ' + F.dias(f.lead),
+        impacto: f.riesgo > 0 ? f.riesgo : null,
+        recomendacion: 'Lanzar un pedido de ' + F.n(f.neto) + ' uds (' + F.eur(f.costeEstimado, 0) + ' estimados). ' +
+          (f.limite ? 'La fecha límite para no quedarte sin stock era el ' + F.fecha(f.limite) + '.' : ''),
+      });
+    });
+
+    if (resto.length) {
+      const h = 'compras|roturas-sin-pedido-resto||';
+      vivos.push(h);
+      A.Alertas.push({
+        hash: h, modulo: 'compras', tipo: 'roturas-sin-pedido-resto', prioridad: 'MEDIA',
+        problema: 'Otras ' + F.n(resto.length) + ' referencias están en rotura y tampoco tienen pedido de compra en curso',
+        metrica: F.n(A.sum(resto, (f) => f.neto)) + ' uds por pedir · ' +
+          F.eur(A.sum(resto, (f) => f.costeEstimado), 0) + ' estimados',
+        impacto: A.sum(resto, (f) => f.riesgo),
+        recomendacion: 'Están listadas en Compras › Qué hay que pedir, ordenadas por urgencia. ' +
+          'Desde ahí puedes lanzar un único pedido con todas las referencias.',
+      });
+    }
+
+    A.Alertas.cerrarAusentes('compras', vivos);
+  });
+
+  /* ======================= registro ======================= */
+  A.registrar({
+    id: 'compras',
+    titulo: 'Compras',
+    subtitulo: 'Qué hay que pedir, a quién y cuándo llega',
+    icono: '⇥',
+    orden: 9,
+    contador: () => {
+      const r = ref();
+      const tarde = compras().filter((p) => enCurso(p) && p.fechaLlegada && p.fechaLlegada < r).length;
+      if (tarde) return { n: tarde };
+      const urgentes = porPedir().filter((f) => f.estado === 'ROTURA').length;
+      return urgentes ? { n: urgentes, tono: 'warn' } : null;
+    },
+    render: (c, acciones) => {
+      cont = c;
+      const exp = UI.el('<button class="btn sec">Exportar CSV</button>');
+      exp.addEventListener('click', () => A.Tareas.run('Exportar pedidos de compra', async () => {
+        const filas = [];
+        compras().forEach((p) => {
+          const ls = lineasDe(p);
+          const base = {
+            Referencia: p.referencia || '', Concepto: p.concepto || '', Proveedor: p.proveedor || '',
+            Estado: (EST.get(estadoDe(p)) || ['', estadoDe(p)])[1],
+            Importe: p.importe || 0, FechaPago: p.fechaPago || '', FechaLlegada: p.fechaLlegada || '',
+          };
+          if (!ls.length) { filas.push(Object.assign({ SKU: '', Unidades: 0, CosteUd: 0, Destino: '', Recibidas: 0 }, base)); return; }
+          ls.forEach((l) => filas.push(Object.assign({
+            SKU: l.sku, Unidades: l.unidades, CosteUd: l.coste, Destino: l.pais || '', Recibidas: l.recibidas || 0,
+          }, base)));
+        });
+        if (!filas.length) throw new Error('No hay ningún pedido de compra que exportar todavía.');
+        A.CSV.descargar('compras-' + A.hoy() + '.csv', A.CSV.aCsv(filas,
+          ['Referencia', 'Concepto', 'Proveedor', 'Estado', 'SKU', 'Unidades', 'CosteUd', 'Destino', 'Recibidas',
+            'Importe', 'FechaPago', 'FechaLlegada']));
+        return filas.length + ' líneas exportadas';
+      }).catch(() => { }));
+      const nuevoProv = UI.el('<button class="btn sec">+ Proveedor</button>');
+      nuevoProv.addEventListener('click', () => fichaProveedor({}, true));
+      const nuevo = UI.el('<button class="btn">+ Nuevo pedido</button>');
+      nuevo.addEventListener('click', () => ficha({}, true));
+      acciones.appendChild(exp);
+      acciones.appendChild(nuevoProv);
+      acciones.appendChild(nuevo);
+      pintar();
+    },
+  });
+})();
+
+
+/* ==================== assets/js/mod/informe.js ==================== */
+/* ==========================================================================
+   INFORME — el resumen que Sellerboard manda por correo cada mañana, pero
+   generado dentro del ERP y con sus propios números.
+   Este módulo no diagnostica nada: lee lo que ya han calculado los demás
+   (rentabilidad, alertas, inventario, publicidad, reclamaciones y caja) y lo
+   ordena en una pieza que se lee de arriba abajo en un minuto, se copia a un
+   correo o se imprime en PDF.
+   ========================================================================== */
+(function () {
+  'use strict';
+  const A = window.App;
+  const F = A.fmt, UI = A.UI, Q = A.Q, Calc = A.Calc;
+
+  let cont = null;
+  let tipo = 'diario';
+  let fecha = null;                 // null = fecha de referencia del ERP
+
+  const TIPOS = [['diario', 'Diario'], ['semanal', 'Semanal'], ['mensual', 'Mensual']];
+  /* Ventanas móviles en lugar de mes natural: comparar un mes a medias con otro
+     completo daría variaciones falsas justo en la cifra que más se mira. */
+  const DIAS = { diario: 1, semanal: 7, mensual: 30 };
+  const PERIODOS = 6;               // filas de la comparativa
+  const DIAS_RECLAMACION = 60;      // plazo habitual de Amazon, igual que en Reclamaciones
+  const CADUCA_PRONTO = 15;
+  const HORIZONTE_PAGOS = 28;       // días de pagos a proveedor que entran en el informe
+  const RECO = {
+    ESCALAR: 'escalar', SUBIR: 'subir puja', CREAR_EXACTA: 'crear exacta', BAJAR: 'bajar puja',
+    PAUSAR: 'pausar o revisar', NEGATIVIZAR: 'negativizar', PRESUPUESTO: 'subir presupuesto',
+    PLACEMENT: 'revisar placement',
+  };
+
+  const refErp = () => A.DB().meta.fechaRef || A.hoy();
+  const refFecha = () => fecha || refErp();
+
+  function periodo(n) {
+    const d = DIAS[tipo];
+    const hasta = A.addDays(refFecha(), -(n || 0) * d);
+    return { desde: A.addDays(hasta, -(d - 1)), hasta, dias: d };
+  }
+
+  const etiqueta = (p) => (p.dias === 1 ? F.fecha(p.hasta) : F.fecha(p.desde) + ' → ' + F.fecha(p.hasta));
+  const nombreAnterior = () => (tipo === 'diario' ? 'el día anterior'
+    : tipo === 'semanal' ? 'los 7 días anteriores' : 'los 30 días anteriores');
+  const nombrePeriodo = () => (tipo === 'diario' ? 'del día'
+    : tipo === 'semanal' ? 'de los últimos 7 días' : 'de los últimos 30 días');
+  const frenteA = () => (tipo === 'diario' ? 'al día anterior' : 'a ' + nombreAnterior());
+  const uds = (n) => F.n(n) + (n === 1 ? ' ud' : ' uds');
+  const dias = (n) => (n == null ? '—' : !isFinite(n) ? 'sin consumo' : F.dias(n));
+
+  /* Con un valor previo nulo o negativo el porcentaje no significa nada: en ese
+     caso se contrasta con la cifra absoluta en vez de inventar una variación. */
+  function contraste(actual, previo, esEuro) {
+    const f = esEuro ? (x) => F.eur(x, 0) : (x) => F.n(x);
+    if (previo == null || previo <= 0) return { v: null, txt: 'frente a ' + f(previo || 0) + ' en ' + nombreAnterior() };
+    const v = (actual - previo) / previo;
+    return { v, txt: (v >= 0 ? 'un ' + F.pct(v) + ' más' : 'un ' + F.pct(-v) + ' menos') + ' que en ' + nombreAnterior() };
+  }
+
+  /* ======================= recogida de datos ======================= */
+
+  function alertasAltas() {
+    return A.Alertas.abiertas()
+      .filter((a) => a.prioridad === 'ALTA')
+      .sort((a, b) => Math.abs(b.impacto || 0) - Math.abs(a.impacto || 0))
+      .slice(0, 6);
+  }
+
+  /* Criba barata de reposición: un recorrido sobre pedidos rellena las tres
+     ventanas y solo los candidatos pasan por Calc.reposicion. */
+  function reposiciones() {
+    const st = A.DB().settings;
+    const hasta = refErp();
+    const d7 = A.addDays(hasta, -6), d30 = A.addDays(hasta, -29), d90 = A.addDays(hasta, -89);
+    const vel = new Map();
+    A.DB().pedidos.forEach((o) => {
+      if (o.cancelado || o.fecha < d90 || o.fecha > hasta) return;
+      const k = o.sku + '|' + o.pais;
+      let e = vel.get(k);
+      if (!e) { e = { u7: 0, u30: 0, u90: 0 }; vel.set(k, e); }
+      e.u90 += o.unidades;
+      if (o.fecha >= d30) e.u30 += o.unidades;
+      if (o.fecha >= d7) e.u7 += o.unidades;
+    });
+    const stock = new Map();
+    (A.DB().inventario || []).forEach((i) => {
+      const k = i.sku + '|' + i.pais;
+      let e = stock.get(k);
+      if (!e) { e = { sku: i.sku, pais: i.pais, disponible: 0, transito: 0 }; stock.set(k, e); }
+      e.disponible += i.disponible || 0;
+      e.transito += i.transito || 0;
+    });
+    const cand = [];
+    stock.forEach((s, k) => {
+      const v = vel.get(k);
+      if (!v) return;                       // sin ventas en 90 d no es rotura, es stock parado
+      /* Se criba con la velocidad más alta de las tres ventanas: da la cobertura
+         más pesimista y así ningún caso crítico se queda fuera. */
+      const vMax = Math.max(v.u7 / 7, v.u30 / 30, v.u90 / 90);
+      if (vMax <= 0) return;
+      const p = Q.producto(s.sku);
+      const umbral = ((p && p.leadTime) || st.leadTimeDias) + st.stockSeguridadDias;
+      const cob = (s.disponible + s.transito) / vMax;
+      if (cob < umbral) cand.push({ sku: s.sku, pais: s.pais, cob });
+    });
+    return cand.sort((a, b) => a.cob - b.cob).slice(0, 40)
+      .map((c) => Calc.reposicion(c.sku, c.pais))
+      .filter((x) => x.estado === 'ROTURA' || x.estado === 'BAJO')
+      .sort((a, b) => (a.estado === b.estado ? a.coberturaTotal - b.coberturaTotal : a.estado === 'ROTURA' ? -1 : 1));
+  }
+
+  function publicidad(r) {
+    const def = A.DB().settings.ppcDefault || {};
+    const props = (A.DB().cambios || []).filter((c) => c.estado === 'propuesto');
+    const cuenta = {};
+    props.forEach((c) => { const k = c.reco || 'OTRAS'; cuenta[k] = (cuenta[k] || 0) + 1; });
+    return {
+      gasto: r.ppc, acos: r.acos, tacos: r.tacos, equilibrio: r.acosEquilibrio,
+      acosObj: def.acosObjetivo, tacosObj: def.tacosObjetivo, props, cuenta,
+    };
+  }
+
+  function reclamaciones() {
+    const ref = refErp();
+    const abiertos = (A.DB().reclamaciones || []).filter((c) => c.estado === 'detectado' || c.estado === 'reclamado');
+    const caducan = abiertos.filter((c) => DIAS_RECLAMACION - A.diffDias(c.fecha || c.creado, ref) <= CADUCA_PRONTO);
+    return {
+      abiertos, caducan, hay: (A.DB().reclamaciones || []).length,
+      total: A.sum(abiertos, (c) => c.importe), totalCaducan: A.sum(caducan, (c) => c.importe),
+    };
+  }
+
+  /* La proyección de tesorería vive en el módulo de caja y no se replica aquí:
+     el informe lee su alerta y los pagos ya anotados. */
+  function tesoreria() {
+    const s = A.DB().settings;
+    const ref = refErp();
+    const alerta = (A.DB().alertas || []).find((a) => a.modulo === 'caja' && a.tipo === 'saldo-negativo'
+      && (a.estado === 'ABIERTA' || a.estado === 'REVISADA'));
+    const horizonte = A.addDays(ref, HORIZONTE_PAGOS);
+    const pagos = (A.DB().compras || [])
+      .filter((c) => c.fechaPago && c.fechaPago >= ref && c.fechaPago <= horizonte)
+      .sort((a, b) => (a.fechaPago || '').localeCompare(b.fechaPago || ''));
+    return {
+      alerta, pagos, horizonte, total: A.sum(pagos, (c) => c.importe),
+      configurada: !!s.caja, saldo: s.caja ? Number(s.caja.saldoInicial) || 0 : null,
+    };
+  }
+
+  /* Agregado por SKU en un solo recorrido, memorizando ficha unitaria y coste:
+     llamar a Calc.unidad línea a línea multiplicaría el trabajo por cuarenta. */
+  function topProductos(p, r) {
+    const eco = new Map(), cst = new Map(), m = new Map();
+    const dame = (sku) => {
+      let a = m.get(sku);
+      if (!a) { a = { sku, unidades: 0, brutas: 0, netas: 0, cogs: 0, tarifas: 0, devol: 0, ppc: 0 }; m.set(sku, a); }
+      return a;
+    };
+    Q.pedidos({ desde: p.desde, hasta: p.hasta }).forEach((o) => {
+      const kp = o.sku + '|' + o.pais;
+      let e = eco.get(kp);
+      if (!e) {
+        const u = Calc.unidad(o.sku, o.pais, o.fecha);
+        e = { netoVenta: u.netoVenta, referral: u.referral, fba: u.fba, logistica: u.logistica };
+        eco.set(kp, e);
+      }
+      const kc = o.sku + '|' + o.fecha;
+      let coste = cst.get(kc);
+      if (coste === undefined) { coste = Calc.coste(o.sku, o.fecha); cst.set(kc, coste); }
+      const neto = o.importe / (1 + Calc.iva(o.pais));
+      const a = dame(o.sku);
+      a.unidades += o.unidades;
+      a.brutas += o.importe;
+      a.netas += neto;
+      a.cogs += coste * o.unidades;
+      /* Las tarifas se prorratean sobre el neto realmente cobrado, no sobre el
+         precio de catálogo: las promociones no abaratan la comisión. */
+      const escala = e.netoVenta ? neto / (e.netoVenta * o.unidades) : 1;
+      a.tarifas += e.referral * o.unidades * (isFinite(escala) ? escala : 1) + (e.fba + e.logistica) * o.unidades;
+    });
+    (A.DB().devoluciones || []).forEach((d) => {
+      if (d.fecha < p.desde || d.fecha > p.hasta) return;
+      dame(d.sku).devol += d.importe;
+    });
+    Q.ppc('keywords', { desde: p.desde, hasta: p.hasta }).forEach((k) => {
+      if (!k.sku) return;
+      dame(k.sku).ppc += k.gasto;
+    });
+    const filas = [];
+    m.forEach((a) => {
+      /* Los gastos generales del periodo se reparten por cuota de facturación:
+         así la suma por producto cuadra con el beneficio real del informe. */
+      a.gastos = r.ventasBrutas ? r.gastos * (a.brutas / r.ventasBrutas) : 0;
+      a.beneficio = a.netas - a.cogs - a.tarifas - a.devol - a.ppc - a.gastos;
+      a.margen = a.netas ? a.beneficio / a.netas : null;
+      a.tacos = a.brutas ? a.ppc / a.brutas : (a.ppc > 0 ? Infinity : null);
+      filas.push(a);
+    });
+    return filas.sort((x, y) => y.beneficio - x.beneficio).slice(0, 10);
+  }
+
+  function datos() {
+    const serie = [];
+    for (let n = PERIODOS - 1; n >= 0; n--) {
+      const p = periodo(n);
+      serie.push({ p, r: Calc.rentabilidad({ desde: p.desde, hasta: p.hasta }) });
+    }
+    const act = serie[serie.length - 1];
+    const ant = serie[serie.length - 2];
+    return {
+      p: act.p, r: act.r, rAnt: ant.r, serie,
+      alertas: alertasAltas(),
+      repos: reposiciones(),
+      ads: publicidad(act.r),
+      rec: reclamaciones(),
+      caja: tesoreria(),
+      top: topProductos(act.p, act.r),
+      desfase: refFecha() !== refErp(),
+    };
+  }
+
+  /* ======================= texto plano ======================= */
+
+  function textoPlano(d) {
+    const L = [];
+    const sec = (t) => { L.push(''); L.push(t.toUpperCase()); L.push('-'.repeat(Math.max(10, t.length))); };
+    const ptsMargen = (d.r.margen != null && d.rAnt.margen != null) ? (d.r.margen - d.rAnt.margen) * 100 : null;
+
+    L.push('ACME · INFORME ' + tipo.toUpperCase());
+    L.push(etiqueta(d.p) + '  ·  ' + F.n(d.p.dias) + (d.p.dias === 1 ? ' día' : ' días'));
+    L.push('='.repeat(46));
+
+    sec('Resumen');
+    L.push('Ventas: ' + F.eur(d.r.ventasBrutas) + ' (' + contraste(d.r.ventasBrutas, d.rAnt.ventasBrutas, true).txt + ')');
+    L.push('Beneficio real: ' + F.eur(d.r.beneficio) + ' (' + contraste(d.r.beneficio, d.rAnt.beneficio, true).txt + ')');
+    L.push('Margen: ' + F.pct(d.r.margen) + (ptsMargen == null ? '' : ' (' + (ptsMargen >= 0 ? '+' : '') + F.n(ptsMargen, 1) + ' pp)'));
+    L.push('Unidades: ' + F.n(d.r.unidades) + ' en ' + F.n(d.r.pedidos) + ' pedidos');
+    L.push('Gastos propios del periodo: ' + F.eur(d.r.gastos));
+
+    sec('Lo que hay que mirar hoy');
+    if (!d.alertas.length) {
+      L.push('Ninguna incidencia de prioridad alta abierta.');
+    } else {
+      d.alertas.forEach((a, i) => {
+        L.push((i + 1) + '. [' + (a.sku || 'general') + (a.pais ? ' · ' + a.pais : '') + '] ' + a.problema);
+        if (a.metrica) L.push('   ' + a.metrica + (a.impacto != null ? ' · impacto ' + F.eur(a.impacto, 0) : ''));
+        else if (a.impacto != null) L.push('   Impacto ' + F.eur(a.impacto, 0));
+        if (a.recomendacion) L.push('   Qué hacer: ' + a.recomendacion);
+      });
+    }
+
+    sec('Reposición urgente');
+    if (!d.repos.length) {
+      L.push('Ningún producto por debajo de la cobertura mínima.');
+    } else {
+      d.repos.slice(0, 10).forEach((x) => {
+        L.push('- ' + x.sku + ' · ' + x.pais + ' · ' + x.estado + ' · cobertura ' + dias(x.coberturaTotal) +
+          ' · pedir ' + uds(x.recomendado));
+      });
+    }
+
+    sec('Publicidad');
+    L.push('Gasto: ' + F.eur(d.ads.gasto) +
+      ' · ACOS ' + (isFinite(d.ads.acos) ? F.pct(d.ads.acos) : 'sin ventas atribuidas') +
+      (d.ads.acosObj != null ? ' (objetivo ' + F.pct(d.ads.acosObj) + ')' : ''));
+    L.push('TACOS: ' + F.pct(d.ads.tacos) + (d.ads.tacosObj != null ? ' (objetivo ' + F.pct(d.ads.tacosObj) + ')' : ''));
+    if (d.ads.equilibrio != null && isFinite(d.ads.equilibrio)) L.push('ACOS de equilibrio: ' + F.pct(d.ads.equilibrio));
+    L.push('Recomendaciones pendientes de aprobar: ' + F.n(d.ads.props.length) +
+      (d.ads.props.length ? ' (' + Object.keys(d.ads.cuenta).map((k) => d.ads.cuenta[k] + ' ' + (RECO[k] || k.toLowerCase())).join(', ') + ')' : ''));
+
+    sec('Dinero por reclamar');
+    if (!d.rec.hay) {
+      L.push('Todavía no se ha lanzado la búsqueda de reclamaciones.');
+    } else {
+      L.push(F.eur(d.rec.total) + ' en ' + F.n(d.rec.abiertos.length) + ' casos abiertos.');
+      L.push(d.rec.caducan.length
+        ? F.n(d.rec.caducan.length) + ' caducan en ' + CADUCA_PRONTO + ' días o menos (' + F.eur(d.rec.totalCaducan) + ').'
+        : 'Ninguno caduca en los próximos ' + CADUCA_PRONTO + ' días.');
+    }
+
+    sec('Tesorería');
+    if (d.caja.alerta) {
+      L.push(d.caja.alerta.problema + '. ' + (d.caja.alerta.metrica || ''));
+      if (d.caja.alerta.recomendacion) L.push('Qué hacer: ' + d.caja.alerta.recomendacion);
+    } else if (d.caja.configurada) {
+      L.push('El módulo de caja no prevé saldo negativo con el ritmo actual (saldo de partida ' + F.eur(d.caja.saldo, 0) + ').');
+    } else {
+      L.push('Sin datos suficientes: abre el módulo Flujo de caja y anota el saldo de partida.');
+    }
+    L.push('Pagos a proveedor en los próximos ' + HORIZONTE_PAGOS + ' días: ' +
+      (d.caja.pagos.length ? F.eur(d.caja.total) + ' en ' + F.n(d.caja.pagos.length) + ' pedidos' : 'ninguno anotado'));
+
+    sec('Productos por beneficio');
+    if (!d.top.length) {
+      L.push('Sin ventas en el periodo.');
+    } else {
+      d.top.forEach((x, i) => {
+        L.push((i + 1) + '. ' + x.sku + ' · ' + uds(x.unidades) + ' · ventas ' + F.eur(x.brutas, 0) +
+          ' · beneficio ' + F.eur(x.beneficio, 0) + ' · margen ' + F.pct(x.margen));
+      });
+    }
+
+    sec('Comparativa de los últimos ' + PERIODOS + ' periodos');
+    d.serie.slice().reverse().forEach((s) => {
+      L.push(etiqueta(s.p) + ' · ventas ' + F.eur(s.r.ventasBrutas, 0) + ' · beneficio ' + F.eur(s.r.beneficio, 0) +
+        ' · margen ' + F.pct(s.r.margen) + ' · TACOS ' + F.pct(s.r.tacos));
+    });
+
+    L.push('');
+    L.push('-'.repeat(46));
+    L.push('Generado por el ERP ACME. Datos hasta el ' + F.fecha(refErp()) + '.');
+    return L.join('\n');
+  }
+
+  async function copiar(texto) {
+    if (navigator.clipboard && window.isSecureContext) {
+      try { await navigator.clipboard.writeText(texto); return true; } catch (e) { /* se prueba el método antiguo */ }
+    }
+    const ta = document.createElement('textarea');
+    ta.value = texto;
+    ta.style.cssText = 'position:fixed;top:-1000px;left:0;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    ta.remove();
+    return ok;
+  }
+
+  function verTexto(texto) {
+    UI.modal('Texto del informe', `<p class="sec-note">El navegador ha bloqueado el portapapeles. Selecciona el
+      texto y cópialo a mano.</p><textarea rows="18" style="width:100%;font-size:12px" readonly>${A.esc(texto)}</textarea>`,
+      [{ t: 'Cerrar', sec: true }]);
+  }
+
+  /* ======================= bloques ======================= */
+
+  function estiloImpresion() {
+    return UI.el(`<style media="print">
+      @page { margin: 14mm; }
+      body { background:#fff !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+      .app { display:block !important; }
+      .nav, .topbar, .tasks, .modal, .inf-noimp { display:none !important; }
+      .content { padding:0 !important; max-width:none !important; }
+      .card, .kpi, .tblwrap, .task { box-shadow:none !important; }
+      .card, .aviso, .tblwrap, .kpi { break-inside:avoid; page-break-inside:avoid; }
+      table.tbl th { position:static !important; }
+      h2 { break-after:avoid; page-break-after:avoid; }
+    </style>`);
+  }
+
+  function bloqueTitular(d) {
+    const r = d.r, rAnt = d.rAnt;
+    const cVentas = contraste(r.ventasBrutas, rAnt.ventasBrutas, true);
+    const cBenef = contraste(r.beneficio, rAnt.beneficio, true);
+    const cUds = contraste(r.unidades, rAnt.unidades, false);
+    const pts = (r.margen != null && rAnt.margen != null) ? (r.margen - rAnt.margen) * 100 : null;
+    const caja = UI.el('<div></div>');
+
+    caja.appendChild(UI.el(`<div class="grid g4">
+      ${UI.kpi({ label: 'Ventas del periodo', valor: F.eur(r.ventasBrutas, 0), delta: cVentas.v, sec: F.eur(r.ventasNetas, 0) + ' sin IVA' })}
+      ${UI.kpi({
+      label: 'Beneficio real', valor: F.eur(r.beneficio, 0), delta: cBenef.v,
+      sec: 'Ya descuenta publicidad y ' + F.eur(r.gastos, 0) + ' de gastos propios',
+      tono: r.beneficio < 0 ? 'crit' : 'ok',
+    })}
+      ${UI.kpi({
+      label: 'Margen sobre venta neta', valor: F.pct(r.margen),
+      sec: pts == null ? 'Sin margen anterior con el que comparar'
+        : (pts >= 0 ? '+' : '') + F.n(pts, 1) + ' puntos frente ' + frenteA(),
+      tono: r.margen == null ? '' : r.margen <= 0 ? 'crit' : r.margen < 0.1 ? 'warn' : 'ok',
+    })}
+      ${UI.kpi({ label: 'Unidades vendidas', valor: F.n(r.unidades), delta: cUds.v, sec: F.n(r.pedidos) + ' pedidos' })}
+    </div>`));
+
+    if (!r.ventasBrutas && !r.ppc) {
+      caja.appendChild(UI.el(`<div class="aviso warn" style="margin-top:16px"><div>
+        <h4>No consta actividad en este periodo</h4>
+        <p>Entre el ${F.fecha(d.p.desde)} y el ${F.fecha(d.p.hasta)} no hay ni pedidos ni gasto publicitario.
+        Cambia la fecha del informe o importa los datos en el módulo Datos. El resto del informe sigue siendo
+        válido: refleja el estado de hoy, no el del periodo.</p></div></div>`));
+      return caja;
+    }
+
+    caja.appendChild(UI.el(`<div class="aviso" style="margin-top:16px"><div>
+      <h4>El titular ${nombrePeriodo()}</h4>
+      <p>Se facturaron <b>${F.eur(r.ventasBrutas)}</b>, ${cVentas.txt}.
+      El beneficio real fue de <b class="${r.beneficio < 0 ? 'neg' : 'pos'}">${F.eur(r.beneficio)}</b>, ${cBenef.txt},
+      con un margen del <b>${F.pct(r.margen)}</b>${pts == null ? ''
+        : ' (' + (pts >= 0 ? '+' : '') + F.n(pts, 1) + ' puntos)'}.</p>
+      <p>Se vendieron <b>${F.n(r.unidades)}</b> unidades en ${F.n(r.pedidos)} pedidos, con
+      ${F.eur(r.ppc)} de publicidad y ${F.eur(r.gastos)} de gastos propios ya descontados. De cada unidad
+      quedan <b>${F.eur(r.beneficioUd)}</b> limpios.</p></div></div>`));
+    return caja;
+  }
+
+  function bloqueAlertas(d) {
+    const card = UI.el(`<div class="card"><div class="hd"><h3>Lo que hay que mirar hoy</h3>
+      ${d.alertas.length ? UI.badge(d.alertas.length + ' de prioridad alta', 'crit') : UI.badge('nada urgente', 'ok')}
+      <span class="sp"></span>
+      <button class="btn sec xs inf-noimp" data-ir="alertas">Ver todas las alertas</button>
+    </div><div class="bd"></div></div>`);
+    const bd = card.querySelector('.bd');
+
+    if (!d.alertas.length) {
+      bd.appendChild(UI.el(`<div class="aviso ok" style="margin:0"><div>
+        <h4>Ninguna incidencia de prioridad alta abierta</h4>
+        <p>Los detectores de los demás módulos no han encontrado nada urgente con los datos cargados.
+        Si acabas de importar informes nuevos, lanza «Recalcular análisis» en la portada.</p></div></div>`));
+      return card;
+    }
+
+    bd.appendChild(UI.tabla([
+      {
+        k: 'sku', t: 'Ámbito', sort: false,
+        r: (a) => `<div class="mono">${A.esc(a.sku || '—')}</div>
+                   <div class="mini"><span class="pais">${A.esc(a.pais || 'Todos')}</span> · ${A.esc(a.modulo || '—')}</div>`,
+      },
+      {
+        k: 'problema', t: 'Qué pasa y qué se propone', cls: 'wrap', sort: false,
+        r: (a) => `<div class="strong">${A.esc(a.problema || '—')}</div>
+                   ${a.metrica ? `<div class="mini mono">${A.esc(a.metrica)}</div>` : ''}
+                   ${a.recomendacion ? `<div class="mini">Propuesta: ${A.esc(a.recomendacion)}</div>` : ''}`,
+      },
+      {
+        k: 'impacto', t: 'Impacto', num: true, sort: false,
+        r: (a) => (a.impacto == null ? '<span class="mini">sin cuantificar</span>'
+          : `<span class="strong ${a.impacto < 0 ? 'neg' : ''}">${F.eur(a.impacto, 0)}</span>`),
+      },
+      {
+        k: 'acc', t: '', num: true, sort: false,
+        r: (a) => `<button class="btn sec xs inf-noimp" data-ir="${A.esc(a.modulo || 'alertas')}"
+          ${a.sku ? `data-sku="${A.esc(a.sku)}"` : ''} ${a.pais ? `data-pais="${A.esc(a.pais)}"` : ''}>Abrir</button>`,
+      },
+    ], d.alertas));
+    return card;
+  }
+
+  function bloqueReposicion(d) {
+    const st = A.DB().settings;
+    const roturas = d.repos.filter((x) => x.estado === 'ROTURA').length;
+    const card = UI.el(`<div class="card"><div class="hd"><h3>Reposiciones urgentes</h3>
+      ${roturas ? UI.badge(roturas + ' en rotura', 'crit') : ''}
+      ${d.repos.length - roturas ? UI.badge((d.repos.length - roturas) + ' bajos', 'warn') : ''}
+      ${d.repos.length ? '' : UI.badge('al día', 'ok')}
+      <span class="sp"></span>
+      <button class="btn sec xs inf-noimp" data-ir="inventario">Ir a Inventario</button>
+    </div><div class="bd"></div></div>`);
+    const bd = card.querySelector('.bd');
+
+    if (!d.repos.length) {
+      bd.appendChild(UI.el(`<div class="aviso ok" style="margin:0"><div>
+        <h4>Ningún producto por debajo de la cobertura mínima</h4>
+        <p>Con ${F.n(st.leadTimeDias)} días de plazo de aprovisionamiento y ${F.n(st.stockSeguridadDias)} días de
+        stock de seguridad, ninguna combinación de producto y mercado cae por debajo del umbral.</p></div></div>`));
+      return card;
+    }
+
+    const filas = d.repos.slice(0, 10);
+    bd.appendChild(UI.tabla([
+      {
+        k: 'sku', t: 'Producto', sort: false,
+        r: (x) => {
+          const p = Q.producto(x.sku);
+          return `<div class="mono">${A.esc(x.sku)}</div>
+                  <div class="mini">${A.esc(p ? (p.titulo || '').slice(0, 46) : 'Sin ficha de producto')}</div>`;
+        },
+      },
+      { k: 'pais', t: 'Mercado', sort: false, r: (x) => `<span class="pais">${A.esc(x.pais)}</span>` },
+      { k: 'estado', t: 'Estado', sort: false, r: (x) => UI.badge(x.estado, x.estado === 'ROTURA' ? 'crit' : 'warn') },
+      {
+        k: 'coberturaTotal', t: 'Cobertura', num: true, sort: false,
+        r: (x) => `<span class="strong ${x.estado === 'ROTURA' ? 'neg' : ''}">${dias(x.coberturaTotal)}</span>
+                   <div class="mini">necesita ${F.n(x.lead + A.DB().settings.stockSeguridadDias)} d</div>`,
+      },
+      { k: 'disponible', t: 'Disponible', num: true, sort: false, r: (x) => F.n(x.disponible) },
+      { k: 'transito', t: 'En tránsito', num: true, sort: false, r: (x) => (x.transito ? F.n(x.transito) : '<span class="mini">—</span>') },
+      { k: 'vel', t: 'Ritmo ud/día', num: true, sort: false, r: (x) => F.n(x.vel, 2) },
+      { k: 'recomendado', t: 'Pedir', num: true, sort: false, r: (x) => `<span class="strong">${F.n(x.recomendado)}</span> uds` },
+    ], filas));
+    if (d.repos.length > filas.length) {
+      bd.appendChild(UI.el(`<p class="sec-note" style="margin:10px 0 0">Se listan los ${F.n(filas.length)} de
+        cobertura más corta; quedan ${F.n(d.repos.length - filas.length)} más en el módulo Inventario.</p>`));
+    }
+    return card;
+  }
+
+  function bloquePublicidad(d) {
+    const a = d.ads;
+    const fueraTacos = a.tacosObj != null && a.tacos != null && a.tacos > a.tacosObj;
+    const fueraAcos = a.acosObj != null && isFinite(a.acos) && a.acos > a.acosObj;
+    const card = UI.el(`<div class="card"><div class="hd"><h3>Publicidad</h3>
+      ${UI.badge(fueraTacos || fueraAcos ? 'fuera de objetivo' : 'dentro de objetivo', fueraTacos || fueraAcos ? 'warn' : 'ok')}
+      <span class="sp"></span>
+      <button class="btn sec xs inf-noimp" data-ir="ppc">Ir a Publicidad</button>
+    </div><div class="bd"></div></div>`);
+    const bd = card.querySelector('.bd');
+
+    bd.appendChild(UI.el(`<div class="dl">
+      <dt>Gasto del periodo</dt><dd><b>${F.eur(a.gasto)}</b> · ${F.pct(d.r.ventasBrutas ? a.gasto / d.r.ventasBrutas : null)} de la facturación</dd>
+      <dt>ACOS</dt><dd>${isFinite(a.acos) ? `<b class="${fueraAcos ? 'neg' : 'pos'}">${F.pct(a.acos)}</b>` : '<span class="mini">sin ventas atribuidas</span>'}
+        ${a.acosObj != null ? `<span class="mini">objetivo ${F.pct(a.acosObj)}</span>` : ''}</dd>
+      <dt>TACOS</dt><dd><b class="${fueraTacos ? 'neg' : 'pos'}">${F.pct(a.tacos)}</b>
+        ${a.tacosObj != null ? `<span class="mini">objetivo ${F.pct(a.tacosObj)}</span>` : ''}</dd>
+      <dt>ACOS de equilibrio</dt><dd>${a.equilibrio != null && isFinite(a.equilibrio) ? F.pct(a.equilibrio)
+        + ' <span class="mini">por encima de ahí cada euro de publicidad quita beneficio</span>'
+        : '<span class="mini">sin ventas atribuidas para calcularlo</span>'}</dd>
+    </div>`));
+
+    const props = a.props;
+    const detalle = Object.keys(a.cuenta).map((k) => a.cuenta[k] + ' ' + (RECO[k] || k.toLowerCase())).join(', ');
+    bd.appendChild(UI.el(`<div class="aviso ${props.length ? 'warn' : 'ok'}" style="margin:14px 0 0"><div>
+      <h4>${props.length ? F.n(props.length) + ' recomendaciones pendientes de aprobar' : 'Sin recomendaciones pendientes'}</h4>
+      <p>${props.length
+        ? 'El motor propone ' + A.esc(detalle) + '. Hasta que se aprueben y se exporten al fichero Bulk no cambia nada en Amazon.'
+        : 'No hay ninguna propuesta esperando decisión. Vuelve a lanzar el motor de recomendaciones después de importar los informes de Amazon Ads.'}</p>
+    </div></div>`));
+
+    if (fueraTacos) {
+      const exceso = a.gasto - a.tacosObj * d.r.ventasBrutas;
+      bd.appendChild(UI.el(`<p class="sec-note" style="margin:10px 0 0">Volver al TACOS objetivo en este periodo
+        habría supuesto gastar ${F.eur(a.tacosObj * d.r.ventasBrutas)}, es decir ${F.eur(exceso)} menos que hoy
+        <span class="est">EST.</span> — suponiendo la misma venta, que no es lo normal cuando se recorta puja.</p>`));
+    }
+    return card;
+  }
+
+  function bloqueDinero(d) {
+    const r = d.rec, c = d.caja;
+    const g = UI.el('<div class="grid g2"></div>');
+
+    const cardRec = UI.el(`<div class="card"><div class="hd"><h3>Dinero por reclamar</h3>
+      ${r.caducan.length ? UI.badge(r.caducan.length + ' caducan pronto', 'crit') : ''}
+      <span class="sp"></span>
+      <button class="btn sec xs inf-noimp" data-ir="moneyback">Ir a Reclamaciones</button>
+    </div><div class="bd"></div></div>`);
+    const bdRec = cardRec.querySelector('.bd');
+    if (!r.hay) {
+      bdRec.appendChild(UI.el(`<div class="aviso" style="margin:0"><div>
+        <h4>Todavía no se ha buscado nada</h4>
+        <p>El módulo de Reclamaciones revisa devoluciones no reintegradas, tarifas por encima de lo esperado,
+        envíos sin recepcionar y reembolsos superiores a la venta. Hasta que se lance, esta cifra no existe.</p></div></div>`));
+    } else {
+      bdRec.appendChild(UI.el(`<div class="dl">
+        <dt>Abierto</dt><dd><b>${F.eur(r.total)}</b> en ${F.n(r.abiertos.length)} casos</dd>
+        <dt>Caducan pronto</dt><dd>${r.caducan.length
+          ? `<b class="neg">${F.n(r.caducan.length)} casos · ${F.eur(r.totalCaducan)}</b>
+             <div class="mini">Amazon deja de admitirlos a los ${DIAS_RECLAMACION} días del hecho</div>`
+          : '<span class="mini">ninguno en los próximos ' + CADUCA_PRONTO + ' días</span>'}</dd>
+      </div>`));
+      if (r.caducan.length) {
+        bdRec.appendChild(UI.el(`<p class="sec-note" style="margin:10px 0 0">Primeros:
+          ${r.caducan.slice(0, 3).map((x) => A.esc(x.sku || x.tipo) + ' (' + F.eur(x.importe) + ')').join(' · ')}.</p>`));
+      }
+    }
+    g.appendChild(cardRec);
+
+    const cardCaja = UI.el(`<div class="card"><div class="hd"><h3>Tesorería</h3>
+      ${c.alerta ? UI.badge('saldo negativo previsto', 'crit') : c.configurada ? UI.badge('sin rojos previstos', 'ok') : UI.badge('sin configurar', 'mut')}
+      <span class="sp"></span>
+      <button class="btn sec xs inf-noimp" data-ir="caja">Ir a Flujo de caja</button>
+    </div><div class="bd"></div></div>`);
+    const bdCaja = cardCaja.querySelector('.bd');
+    if (c.alerta) {
+      bdCaja.appendChild(UI.el(`<div class="aviso crit" style="margin:0"><div>
+        <h4>${A.esc(c.alerta.problema)}</h4>
+        <p>${A.esc(c.alerta.metrica || '')} ${c.alerta.recomendacion ? A.esc(c.alerta.recomendacion) : ''}</p></div></div>`));
+    } else if (c.configurada) {
+      bdCaja.appendChild(UI.el(`<div class="aviso ok" style="margin:0"><div>
+        <h4>La caja aguanta con el ritmo actual</h4>
+        <p>Partiendo de ${F.eur(c.saldo, 0)} de saldo, la proyección del módulo de caja no baja de cero en las
+        semanas proyectadas.</p></div></div>`));
+    } else {
+      bdCaja.appendChild(UI.el(`<div class="aviso warn" style="margin:0"><div>
+        <h4>Sin datos suficientes para hablar de tesorería</h4>
+        <p>Abre el módulo Flujo de caja y anota el saldo de partida y los pedidos a proveedor: sin eso la
+        proyección no puede decir nada.</p></div></div>`));
+    }
+    bdCaja.appendChild(UI.el(`<p class="sec-note" style="margin:12px 0 0">
+      Pagos a proveedor anotados en los próximos ${HORIZONTE_PAGOS} días:
+      ${c.pagos.length ? `<b>${F.eur(c.total)}</b> en ${F.n(c.pagos.length)} pedidos —
+        ${c.pagos.slice(0, 3).map((x) => A.esc(x.concepto || x.proveedor || 'pedido') + ' ' + F.eur(x.importe, 0) + ' el ' + F.fecha(x.fechaPago)).join(' · ')}`
+      : 'ninguno.'}</p>`));
+    g.appendChild(cardCaja);
+    return g;
+  }
+
+  function bloqueTop(d) {
+    const card = UI.el(`<div class="card"><div class="hd"><h3>Los 10 productos que más beneficio dejan</h3>
+      <span class="mini">${etiqueta(d.p)}</span><span class="sp"></span>
+      <button class="btn sec xs inf-noimp" data-ir="rentabilidad">Ir a Rentabilidad</button>
+    </div><div class="bd"></div></div>`);
+    const bd = card.querySelector('.bd');
+    bd.appendChild(UI.tabla([
+      {
+        k: 'sku', t: 'Producto', cls: 'wrap', sort: false,
+        r: (x) => {
+          const p = Q.producto(x.sku);
+          return `<div class="mono">${A.esc(x.sku)}</div>
+                  <div class="mini">${A.esc(p ? (p.titulo || '').slice(0, 54) : 'Sin ficha de producto')}</div>`;
+        },
+      },
+      { k: 'unidades', t: 'Uds', num: true, sort: false, r: (x) => F.n(x.unidades) },
+      { k: 'brutas', t: 'Ventas', num: true, sort: false, r: (x) => F.eur(x.brutas, 0) },
+      { k: 'ppc', t: 'Publicidad', num: true, sort: false, r: (x) => (x.ppc ? `<span class="neg">−${F.eur(x.ppc, 0)}</span>` : '<span class="mini">—</span>') },
+      { k: 'beneficio', t: 'Beneficio', num: true, sort: false, r: (x) => `<b class="${x.beneficio < 0 ? 'neg' : 'pos'}">${F.eur(x.beneficio, 0)}</b>` },
+      { k: 'margen', t: 'Margen', num: true, sort: false, r: (x) => F.pct(x.margen) },
+      { k: 'tacos', t: 'TACOS', num: true, sort: false, r: (x) => (x.tacos == null ? '<span class="mini">—</span>' : isFinite(x.tacos) ? F.pct(x.tacos) : UI.badge('sin ventas', 'crit')) },
+    ], d.top, { vacio: 'Sin ventas en el periodo.' }));
+    bd.appendChild(UI.el(`<p class="sec-note" style="margin:10px 0 0">
+      El beneficio por producto descuenta coste, tarifas de Amazon, reembolsos, publicidad y la parte proporcional
+      de los gastos propios <span class="est">EST.</span> (repartidos según la facturación de cada producto).
+      La publicidad por producto viene del informe de palabras clave y el total del periodo del de campañas, así que
+      ambas cifras pueden diferir ligeramente.</p>`));
+    return card;
+  }
+
+  function bloqueComparativa(d) {
+    const filas = d.serie.slice().reverse();
+    const ventas = d.serie.map((s) => s.r.ventasBrutas);
+    const benef = d.serie.map((s) => s.r.beneficio);
+    const card = UI.el(`<div class="card"><div class="hd"><h3>Comparativa</h3>
+      <span class="mini">últimos ${PERIODOS} periodos de ${F.n(DIAS[tipo])} ${DIAS[tipo] === 1 ? 'día' : 'días'}</span>
+      <span class="sp"></span>
+      <span class="mini">ventas</span>${UI.spark(ventas, 90, 24)}
+      <span class="mini">beneficio</span>${UI.spark(benef, 90, 24, benef[benef.length - 1] < 0 ? 'crit' : 'ok')}
+    </div><div class="bd"></div></div>`);
+    card.querySelector('.bd').appendChild(UI.tabla([
+      {
+        k: 'periodo', t: 'Periodo', sort: false,
+        r: (s, i) => `${etiqueta(s.p)} ${i === 0 ? UI.badge('actual', 'info') : ''}`,
+      },
+      { k: 'ventas', t: 'Ventas', num: true, sort: false, r: (s) => F.eur(s.r.ventasBrutas, 0) },
+      { k: 'unidades', t: 'Uds', num: true, sort: false, r: (s) => F.n(s.r.unidades) },
+      { k: 'ppc', t: 'Publicidad', num: true, sort: false, r: (s) => F.eur(s.r.ppc, 0) },
+      { k: 'beneficio', t: 'Beneficio', num: true, sort: false, r: (s) => `<b class="${s.r.beneficio < 0 ? 'neg' : 'pos'}">${F.eur(s.r.beneficio, 0)}</b>` },
+      { k: 'margen', t: 'Margen', num: true, sort: false, r: (s) => F.pct(s.r.margen) },
+      { k: 'tacos', t: 'TACOS', num: true, sort: false, r: (s) => F.pct(s.r.tacos) },
+    ], filas));
+    return card;
+  }
+
+  /* ======================= pintado ======================= */
+
+  function pintar() {
+    if (!cont) return;
+    const d = datos();
+    const raiz = UI.el('<div></div>');
+    raiz.appendChild(estiloImpresion());
+
+    const barra = UI.el(`<div class="toolbar inf-noimp">
+      <div class="seg" id="infTipo">${TIPOS.map(([k, t]) =>
+      `<button data-t="${k}" class="${k === tipo ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <label class="f" style="flex-direction:row;align-items:center;gap:7px">Fecha del informe
+        <input id="infFecha" type="date" value="${refFecha()}"></label>
+      <span class="mini">${etiqueta(d.p)}</span>
+      <span class="sp"></span>
+      <button class="btn sec" id="infCopiar">Copiar al portapapeles</button>
+      <button class="btn sec" id="infImprimir">Imprimir o guardar en PDF</button>
+    </div>`);
+    raiz.appendChild(barra);
+
+    raiz.appendChild(UI.el(`<h1 style="margin-bottom:2px">Informe ${tipo} · ${etiqueta(d.p)}</h1>`));
+    raiz.appendChild(UI.el(`<p class="sec-note">ACME · Control Amazon. Cifras del periodo calculadas con los
+      datos cargados en el ERP; el estado de inventario, alertas, reclamaciones y tesorería es el de hoy
+      (${F.fecha(refErp())}).</p>`));
+
+    if (d.desfase) {
+      raiz.appendChild(UI.el(`<div class="aviso warn"><div>
+        <h4>Estás mirando un periodo que no termina hoy</h4>
+        <p>Las ventas, el beneficio y la publicidad corresponden al periodo elegido, pero el inventario, las
+        alertas, las reclamaciones y la tesorería son siempre los del día de referencia del ERP
+        (${F.fecha(refErp())}): no hay foto histórica de stock.</p></div></div>`));
+    }
+
+    raiz.appendChild(bloqueTitular(d));
+    raiz.appendChild(UI.el('<h2>Qué requiere atención</h2>'));
+    raiz.appendChild(bloqueAlertas(d));
+    raiz.appendChild(UI.el('<div style="height:14px"></div>'));
+    raiz.appendChild(bloqueReposicion(d));
+    raiz.appendChild(UI.el('<h2>Publicidad y dinero pendiente</h2>'));
+    raiz.appendChild(bloquePublicidad(d));
+    raiz.appendChild(UI.el('<div style="height:14px"></div>'));
+    raiz.appendChild(bloqueDinero(d));
+    raiz.appendChild(UI.el('<h2>Dónde se gana</h2>'));
+    raiz.appendChild(bloqueTop(d));
+    raiz.appendChild(UI.el('<h2>Tendencia</h2>'));
+    raiz.appendChild(bloqueComparativa(d));
+
+    raiz.appendChild(UI.el(`<p class="sec-note" style="margin-top:16px">
+      <b>Sobre el envío por correo:</b> mandar este resumen solo cada mañana necesitaría un servidor que ejecutara
+      el informe y enviara el correo; el ERP funciona entero dentro del navegador, así que no puede hacerlo por sí
+      mismo. Mientras tanto esto es exactamente el mismo contenido: cópialo con el botón de arriba y pégalo en un
+      correo o en WhatsApp, o imprímelo y guárdalo como PDF.
+      ${tipo === 'mensual' ? ' El informe mensual usa ventanas móviles de 30 días, no meses naturales: comparar un mes a medias con otro completo daría variaciones falsas.' : ''}</p>`));
+
+    /* Delegación sobre la raíz: sobrevive al reordenado de las tablas y muere
+       con el contenido cuando se repinta. */
+    raiz.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-ir]');
+      if (!b || !raiz.contains(b)) return;
+      const params = {};
+      if (b.dataset.sku) params.sku = b.dataset.sku;
+      if (b.dataset.pais) params.pais = b.dataset.pais;
+      A.ir(b.dataset.ir, params);
+    });
+
+    barra.querySelectorAll('#infTipo button').forEach((b) => b.addEventListener('click', () => { tipo = b.dataset.t; pintar(); }));
+    barra.querySelector('#infFecha').addEventListener('change', (e) => {
+      fecha = e.target.value || null;
+      pintar();
+    });
+    barra.querySelector('#infCopiar').addEventListener('click', accionCopiar);
+    barra.querySelector('#infImprimir').addEventListener('click', () => window.print());
+
+    cont.innerHTML = '';
+    cont.appendChild(raiz);
+  }
+
+  function accionCopiar() {
+    A.Tareas.run('Copiar el informe', async () => {
+      const texto = textoPlano(datos());
+      const ok = await copiar(texto);
+      if (!ok) { verTexto(texto); throw new Error('El navegador ha bloqueado el portapapeles; el texto se abre en pantalla.'); }
+      return F.n(texto.split('\n').length) + ' líneas copiadas · listo para pegar';
+    }).catch(() => { });
+  }
+
+  A.registrar({
+    id: 'informe',
+    titulo: 'Informe',
+    subtitulo: 'El resumen de la mañana, listo para enviar o imprimir',
+    icono: '▤',
+    orden: 14,
+    contador: () => null,
+    render: (c, acciones) => {
+      cont = c;
+      const bCopiar = UI.el('<button class="btn sec">Copiar al portapapeles</button>');
+      bCopiar.addEventListener('click', accionCopiar);
+      const bImp = UI.el('<button class="btn">Imprimir o guardar en PDF</button>');
+      bImp.addEventListener('click', () => window.print());
+      acciones.appendChild(bCopiar);
+      acciones.appendChild(bImp);
+      pintar();
+    },
+  });
+})();
+
+
+/* ==================== assets/js/mod/valoracion.js ==================== */
+/* ==========================================================================
+   VALORACIÓN — cuánto valdría la marca si se vendiera hoy.
+   Quien compra un negocio de Amazon no compra facturación: compra el beneficio
+   que se llevaría él (SDE = beneficio real + los gastos que no heredaría) y lo
+   multiplica por un factor que sube o baja según el riesgo percibido —
+   antigüedad, concentración en pocos SKU, tendencia, dependencia de un solo
+   mercado, margen y si la marca está registrada.
+   Todo lo de aquí es una estimación orientativa con los criterios habituales
+   del mercado, nunca una tasación.
+   ========================================================================== */
+(function () {
+  'use strict';
+  const A = window.App;
+  const F = A.fmt, UI = A.UI, Q = A.Q, Calc = A.Calc;
+
+  let cont = null;
+
+  const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  /* El mercado de compraventa de negocios FBA se mueve entre 2,5x y 3,8x sobre
+     un múltiplo central de 3,0x; ese abanico se aplica proporcionalmente al
+     múltiplo ya ajustado por los factores de riesgo. */
+  const F_BAJO = 2.5 / 3.0, F_ALTO = 3.8 / 3.0;
+  const MULT_MIN = 1.2, MULT_MAX = 5.0;
+  const DIAS_ANO = 365;
+
+  const cfg = () => {
+    const s = A.DB().settings;
+    if (!s.valoracion) {
+      s.valoracion = { multiploBase: 3, addbacks: [], otrosAddback: 0, marcaRegistrada: null };
+      A.Store.save();
+    }
+    const v = s.valoracion;
+    if (!Array.isArray(v.addbacks)) v.addbacks = [];
+    return v;
+  };
+
+  /* ---------- ventana de 12 meses ---------- */
+  const finMes = (y, m) => {
+    const d = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    return y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  };
+  const restar = (y, m, k) => { const t = y * 12 + (m - 1) - k; return { y: Math.floor(t / 12), m: (t % 12) + 1 }; };
+  const bloqueMes = (y, m) => ({
+    clave: y + '-' + String(m).padStart(2, '0'),
+    desde: y + '-' + String(m).padStart(2, '0') + '-01',
+    hasta: finMes(y, m),
+    etiqueta: MES[m - 1] + ' ' + String(y).slice(2),
+  });
+
+  /* Una llamada a Calc.rentabilidad por mes es cara; se memoriza y solo se tira
+     el resultado cuando cambian los datos o los supuestos de esta pantalla. */
+  const memo = new Map();
+  let cache = null;
+  const invalidar = () => { memo.clear(); cache = null; };
+  A.Bus.on('datos:cambio', invalidar);
+
+  function rent(desde, hasta) {
+    const k = desde + '|' + hasta;
+    if (!memo.has(k)) memo.set(k, Calc.rentabilidad({ desde, hasta }));
+    return memo.get(k);
+  }
+
+  function agrega(lista) {
+    const t = {
+      ventasBrutas: 0, ventasNetas: 0, unidades: 0, pedidos: 0,
+      beneficio: 0, ppc: 0, gastos: 0, cogs: 0, tarifas: 0, devoluciones: 0,
+    };
+    lista.forEach((x) => {
+      Object.keys(t).forEach((k) => { t[k] += x.r[k] || 0; });
+    });
+    return t;
+  }
+
+  /* ---------- tendencia ---------- */
+  /* Preferimos comparar trimestres cerrados. Cuando no hay 6 meses con
+     cobertura completa se cae a bloques de días equivalentes, que es una señal
+     más débil: el ajuste se reduce a la mitad y se avisa. */
+  function tendencia(meses, primera, ref, diasHist) {
+    const plenos = meses.filter((x) => x.desde >= primera);
+    if (plenos.length >= 6) {
+      const u = plenos.slice(-3), p = plenos.slice(-6, -3);
+      const a = A.sum(u, (x) => x.r.ventasNetas), b = A.sum(p, (x) => x.r.ventasNetas);
+      if (b > 0) {
+        return {
+          crecimiento: (a - b) / b, fiable: true,
+          texto: 'los 3 últimos meses cerrados (' + F.eur(a, 0) + ') frente a los 3 anteriores (' + F.eur(b, 0) + ')',
+        };
+      }
+    }
+    for (const B of [90, 60, 45, 30]) {
+      if (diasHist < B * 2) continue;
+      const a = Q.ventas({ desde: A.addDays(ref, -(B - 1)), hasta: ref }).bruto;
+      const b = Q.ventas({ desde: A.addDays(ref, -(B * 2 - 1)), hasta: A.addDays(ref, -B) }).bruto;
+      if (!(b > 0)) continue;
+      return {
+        crecimiento: (a - b) / b, fiable: false, dias: B,
+        texto: 'los últimos ' + B + ' días (' + F.eur(a, 0) + ') frente a los ' + B + ' anteriores (' + F.eur(b, 0) + ')',
+      };
+    }
+    return null;
+  }
+
+  /* ---------- análisis completo ---------- */
+  function analisis() {
+    if (cache) return cache;
+    const c = cfg();
+    const ref = A.DB().meta.fechaRef || A.hoy();
+    const y = +ref.slice(0, 4), m = +ref.slice(5, 7);
+    const refCerrado = ref >= finMes(y, m);
+    const ult = refCerrado ? { y, m } : restar(y, m, 1);
+
+    const meses = [];
+    for (let i = 11; i >= 0; i--) { const t = restar(ult.y, ult.m, i); meses.push(bloqueMes(t.y, t.m)); }
+    const enCurso = refCerrado ? null : Object.assign(bloqueMes(y, m), { hasta: ref, enCurso: true });
+
+    let primera = null;
+    A.DB().pedidos.forEach((o) => { if (!o.cancelado && (!primera || o.fecha < primera)) primera = o.fecha; });
+    if (!primera) { cache = { vacio: true, ref }; return cache; }
+
+    meses.forEach((x) => {
+      x.sinHistorico = x.hasta < primera;
+      x.parcialHist = !x.sinHistorico && x.desde < primera;
+      x.r = x.sinHistorico ? rent(x.desde, x.desde) : rent(x.desde, x.hasta);
+    });
+    if (enCurso) enCurso.r = rent(enCurso.desde, enCurso.hasta);
+
+    /* Los meses anteriores a la primera venta no se suman: arrastrarían gastos
+       fijos de un negocio que aún no vendía y hundirían el beneficio anual. */
+    const conDatos = meses.filter((x) => !x.sinHistorico);
+    const bloque = conDatos.length ? conDatos : (enCurso && enCurso.r.ventasBrutas ? [enCurso] : []);
+    if (!bloque.length) { cache = { vacio: true, ref, primera }; return cache; }
+
+    const desdeB = bloque[0].desde, hastaB = bloque[bloque.length - 1].hasta;
+    const diasSumados = A.diffDias(desdeB, hastaB) + 1;
+    const diasHist = A.diffDias(primera, ref) + 1;
+    const factor = diasSumados >= DIAS_ANO ? 1 : DIAS_ANO / diasSumados;
+
+    const tot = agrega(bloque);
+    const anual = {
+      ventasBrutas: tot.ventasBrutas * factor, ventasNetas: tot.ventasNetas * factor,
+      beneficio: tot.beneficio * factor, ppc: tot.ppc * factor,
+      gastos: tot.gastos * factor, unidades: tot.unidades * factor,
+    };
+
+    /* SDE: al beneficio real se le devuelven los gastos que el comprador no
+       heredaría, marcados uno a uno por el usuario. */
+    const gDet = Calc.gastos({
+      desde: desdeB, hasta: hastaB,
+      unidades: tot.unidades, pedidos: tot.pedidos, ventas: tot.ventasBrutas, cuota: 1,
+    });
+    const sel = new Set(c.addbacks);
+    const detalle = new Map(gDet.detalle.map((d) => [d.id, d.importe]));
+    const addPeriodo = A.sum(gDet.detalle.filter((d) => sel.has(d.id)), (d) => d.importe);
+    const otros = Number(c.otrosAddback) || 0;
+    const addAnual = addPeriodo * factor + otros;
+    const sde = anual.beneficio + addAnual;
+
+    /* Concentración de SKU y dependencia de mercado: un solo recorrido. */
+    const porSku = new Map(), porPais = new Map();
+    let ventaTot = 0;
+    Q.pedidos({ desde: desdeB, hasta: hastaB }).forEach((o) => {
+      ventaTot += o.importe;
+      porSku.set(o.sku, (porSku.get(o.sku) || 0) + o.importe);
+      porPais.set(o.pais, (porPais.get(o.pais) || 0) + o.importe);
+    });
+    const top3 = [...porSku.entries()].sort((x, z) => z[1] - x[1]).slice(0, 3);
+    const conc = ventaTot ? A.sum(top3, (x) => x[1]) / ventaTot : null;
+    const paises = [...porPais.entries()].sort((x, z) => z[1] - x[1]);
+    const depPais = ventaTot && paises.length ? paises[0][1] / ventaTot : null;
+    const margen = tot.ventasNetas ? tot.beneficio / tot.ventasNetas : null;
+    const mesesNegocio = diasHist / 30.44;
+    const tend = tendencia(meses, primera, ref, diasHist);
+
+    /* ---------- ajustes sobre el múltiplo ---------- */
+    const ajustes = [];
+    const add = (o) => ajustes.push(o);
+
+    let ajAnt, txtAnt;
+    if (mesesNegocio < 12) { ajAnt = -0.5; txtAnt = 'Por debajo de un año de histórico el comprador no puede comprobar estacionalidad ni sostenibilidad: es el descuento más duro que aplica.'; }
+    else if (mesesNegocio < 24) { ajAnt = -0.2; txtAnt = 'Entre 12 y 24 meses ya hay un año comparable, pero sigue faltando la prueba de que el negocio repite.'; }
+    else if (mesesNegocio < 36) { ajAnt = 0.1; txtAnt = 'Dos años de histórico es el umbral a partir del cual la mayoría de compradores mira el negocio sin penalizar.'; }
+    else { ajAnt = 0.3; txtAnt = 'Más de tres años vendiendo demuestra que el negocio aguanta cambios de algoritmo, de tarifas y de competencia.'; }
+    add({
+      clave: 'antiguedad', factor: 'Antigüedad del negocio',
+      valor: F.n(mesesNegocio, 0) + ' meses desde la primera venta (' + F.fecha(primera) + ')',
+      ajuste: ajAnt, porque: txtAnt,
+    });
+
+    let ajCon, txtCon;
+    if (conc == null) { ajCon = null; txtCon = 'Sin ventas en el periodo no se puede medir la concentración.'; }
+    else if (conc > 0.70) { ajCon = -0.4; txtCon = 'Con más del 70 % de la venta en 3 referencias, el comprador asume que un bloqueo de listado o un competidor agresivo se lleva por delante casi todo el negocio.'; }
+    else if (conc > 0.55) { ajCon = -0.25; txtCon = 'Entre el 55 % y el 70 % la dependencia sigue siendo alta: el precio incorpora ese riesgo.'; }
+    else if (conc > 0.40) { ajCon = -0.1; txtCon = 'Concentración moderada; se penaliza poco pero se nota en la negociación.'; }
+    else { ajCon = 0.15; txtCon = 'Cartera repartida: ningún producto puede tumbar el negocio por sí solo.'; }
+    add({
+      clave: 'concentracion', factor: 'Concentración en pocos SKU',
+      valor: conc == null ? 'sin datos suficientes' : F.pct(conc) + ' de la venta en 3 referencias',
+      ajuste: ajCon, porque: txtCon,
+      extra: top3.length ? top3.map((t) => A.esc(t[0]) + ' (' + F.pct(t[1] / ventaTot) + ')').join(' · ') : '',
+    });
+
+    let ajTen, txtTen;
+    if (!tend) { ajTen = null; txtTen = 'No hay histórico suficiente para medir la tendencia; hacen falta al menos dos bloques comparables de 30 días.'; }
+    else {
+      const g = tend.crecimiento;
+      let bruto;
+      if (g > 0.20) { bruto = 0.4; txtTen = 'Un negocio que crece con fuerza se vende caro: el comprador compra los meses que vienen, no los que pasaron.'; }
+      else if (g > 0.05) { bruto = 0.2; txtTen = 'Crecimiento sostenido: apoya el múltiplo sin llegar a la prima de los negocios que se disparan.'; }
+      else if (g > -0.05) { bruto = 0; txtTen = 'Negocio plano: ni prima ni castigo, se valora por lo que gana hoy.'; }
+      else if (g > -0.20) { bruto = -0.25; txtTen = 'Caída moderada: el comprador proyecta a la baja los próximos 12 meses y descuenta.'; }
+      else { bruto = -0.5; txtTen = 'Caída fuerte. Con la venta bajando así, muchos compradores directamente no entran o exigen pagar a plazos según resultados.'; }
+      ajTen = tend.fiable ? bruto : bruto / 2;
+      if (!tend.fiable) txtTen += ' Al no haber 6 meses cerrados se compara por bloques de días, señal más débil: el ajuste se aplica a la mitad.';
+    }
+    add({
+      clave: 'tendencia', factor: 'Tendencia de la venta',
+      valor: !tend ? 'sin datos suficientes' : F.delta(tend.crecimiento) + ' · ' + tend.texto,
+      ajuste: ajTen, porque: txtTen, est: tend ? !tend.fiable : false,
+    });
+
+    let ajPais, txtPais;
+    if (depPais == null) { ajPais = null; txtPais = 'Sin ventas en el periodo no se puede medir la dependencia de mercado.'; }
+    else if (depPais > 0.80) { ajPais = -0.3; txtPais = 'Casi toda la venta en un único mercado: un cambio normativo, un bloqueo de cuenta o un competidor local afectan al 100 % del negocio.'; }
+    else if (depPais > 0.60) { ajPais = -0.15; txtPais = 'Mercado principal dominante, aunque ya hay salida en otros países.'; }
+    else { ajPais = 0.1; txtPais = 'Venta repartida entre varios mercados: el riesgo país queda diluido y amplía el número de compradores interesados.'; }
+    add({
+      clave: 'mercado', factor: 'Dependencia de un solo mercado',
+      valor: depPais == null ? 'sin datos suficientes'
+        : paises[0][0] + ' concentra el ' + F.pct(depPais) + ' (' + paises.length + ' mercados activos)',
+      ajuste: ajPais, porque: txtPais,
+    });
+
+    let ajMar, txtMar;
+    if (margen == null) { ajMar = null; txtMar = 'Sin ventas netas no se puede calcular el margen.'; }
+    else if (margen > 0.20) { ajMar = 0.3; txtMar = 'Margen alto: hay colchón para absorber subidas de tarifas de Amazon o de coste de producto sin quedarse en pérdidas.'; }
+    else if (margen > 0.15) { ajMar = 0.15; txtMar = 'Margen cómodo, por encima de la media del sector.'; }
+    else if (margen > 0.10) { ajMar = 0; txtMar = 'Margen en la media: ni suma ni resta al múltiplo.'; }
+    else if (margen > 0.05) { ajMar = -0.2; txtMar = 'Margen ajustado: cualquier subida de FBA o del PPC se come el beneficio, y el comprador lo sabe.'; }
+    else { ajMar = -0.4; txtMar = 'Margen muy bajo. El negocio depende de que nada empeore, y eso se paga a la baja.'; }
+    add({
+      clave: 'margen', factor: 'Margen neto',
+      valor: margen == null ? 'sin datos suficientes' : F.pct(margen) + ' sobre venta neta',
+      ajuste: ajMar, porque: txtMar,
+    });
+
+    let ajMarca, txtMarca;
+    if (c.marcaRegistrada === true) { ajMarca = 0.3; txtMarca = 'Marca registrada: da acceso a Brand Registry, protege frente a hijackers y es un activo transmisible que el comprador valora aparte del listado.'; }
+    else if (c.marcaRegistrada === false) { ajMarca = -0.3; txtMarca = 'Sin marca registrada el comprador no compra un activo protegible: cualquiera puede colgarse de tus ASIN y no hay Brand Registry, A+ ni Vídeo de marca garantizados.'; }
+    else { ajMarca = null; txtMarca = 'Sin declarar. Indica arriba si la marca está registrada; es uno de los factores que más mueve el múltiplo.'; }
+    add({
+      clave: 'marca', factor: 'Marca registrada',
+      valor: c.marcaRegistrada === true ? 'Sí, registrada' : c.marcaRegistrada === false ? 'No registrada' : 'sin declarar',
+      ajuste: ajMarca, porque: txtMarca,
+    });
+
+    const base = A.clamp(Number(c.multiploBase) || 3, 1, 6);
+    const suma = A.sum(ajustes, (x) => x.ajuste || 0);
+    const bruto = base + suma;
+    const mult = A.clamp(bruto, MULT_MIN, MULT_MAX);
+    const valor = sde > 0 ? sde * mult : 0;
+
+    const stock = A.sum(A.DB().inventario || [], (i) =>
+      ((i.disponible || 0) + (i.transito || 0)) * Calc.coste(i.sku, ref));
+
+    /* ---------- palancas: qué subiría el valor ---------- */
+    const mejoras = [];
+    const eur = (delta) => (sde > 0 ? sde * delta : 0);
+    if (conc != null && ajCon < 0.15) {
+      const d = 0.15 - ajCon;
+      mejoras.push({
+        titulo: 'Diversificar la venta fuera de los 3 productos principales',
+        texto: 'El ' + F.pct(conc) + ' de la facturación depende de ' + top3.map((t) => A.esc(t[0])).join(', ') +
+          '. Bajar esa cuota por debajo del 40 % elimina el descuento por concentración y suma ' +
+          F.n(d, 2) + 'x al múltiplo.',
+        delta: d, euros: eur(d),
+      });
+    }
+    if (mesesNegocio < 24) {
+      const d = 0.1 - ajAnt;
+      mejoras.push({
+        titulo: 'Esperar a los 24 meses de histórico',
+        texto: 'Hoy el negocio tiene ' + F.n(mesesNegocio, 0) + ' meses de vida. No es una acción, es calendario: ' +
+          'llegar a dos años de ventas comprobables vale ' + F.n(d, 2) + 'x más de múltiplo, siempre que las cifras aguanten.',
+        delta: d, euros: eur(d),
+      });
+    }
+    if (tend && ajTen < 0) {
+      const d = 0.2 - ajTen;
+      mejoras.push({
+        titulo: 'Devolver la venta a crecimiento',
+        texto: 'La comparación de ' + tend.texto + ' da ' + F.delta(tend.crecimiento) +
+          '. Pasar a un crecimiento sostenido (+10 %) recupera ' + F.n(d, 2) + 'x de múltiplo.',
+        delta: d, euros: eur(d),
+      });
+    }
+    if (depPais != null && ajPais < 0.1) {
+      const d = 0.1 - ajPais;
+      const otrosP = paises.slice(1, 3).map((p) => p[0]).join(' y ') || 'otros mercados de la UE';
+      mejoras.push({
+        titulo: 'Repartir la venta entre más mercados',
+        texto: paises[0][0] + ' concentra el ' + F.pct(depPais) + '. Empujar ' + otrosP +
+          ' hasta bajar del 60 % de dependencia vale ' + F.n(d, 2) + 'x.',
+        delta: d, euros: eur(d),
+      });
+    }
+    if (c.marcaRegistrada !== true) {
+      const d = 0.3 - (ajMarca || 0);
+      mejoras.push({
+        titulo: 'Registrar la marca',
+        texto: 'Es el ajuste más barato de conseguir de toda la lista: da acceso a Brand Registry y convierte el ' +
+          'negocio en un activo transmisible. Vale ' + F.n(d, 2) + 'x sobre el múltiplo.',
+        delta: d, euros: eur(d),
+      });
+    }
+    if (anual.ventasNetas > 0) {
+      const extra = anual.ventasNetas * 0.02;
+      mejoras.push({
+        titulo: 'Subir 2 puntos el margen',
+        texto: 'Sobre ' + F.eur(anual.ventasNetas, 0) + ' de venta neta anual, dos puntos de margen son ' +
+          F.eur(extra, 0) + ' más de SDE al año. Al múltiplo actual de ' + F.n(mult, 2) + 'x eso son ' +
+          F.eur(extra * mult, 0) + ' de precio, sin vender una unidad más.',
+        delta: null, euros: sde > 0 ? extra * mult : 0,
+      });
+    }
+    mejoras.sort((x, z) => (z.euros || 0) - (x.euros || 0));
+
+    cache = {
+      ref, primera, meses, enCurso, bloque, desdeB, hastaB, diasSumados, diasHist, factor,
+      mesesDatos: bloque.length, tot, anual, gDet, detalle, addPeriodo, addAnual, otros, sde,
+      conc, top3, ventaTot, paises, depPais, margen, mesesNegocio, tend,
+      ajustes, base, suma, bruto, mult, topeado: Math.abs(bruto - mult) > 1e-9,
+      valor, bajo: valor * F_BAJO, alto: valor * F_ALTO, stock, mejoras,
+    };
+    return cache;
+  }
+
+  /* ---------- gráficos SVG propios ---------- */
+  function barraRango(bajo, medio, alto) {
+    const w = 460, h = 48;
+    const min = bajo * 0.85, max = alto * 1.15;
+    const x = (v) => 8 + ((v - min) / ((max - min) || 1)) * (w - 16);
+    return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" role="img" aria-label="Rango de valoración">
+      <rect x="8" y="13" width="${w - 16}" height="9" rx="4.5" fill="var(--line-2)"></rect>
+      <rect x="${x(bajo).toFixed(1)}" y="13" width="${(x(alto) - x(bajo)).toFixed(1)}" height="9" rx="4.5"
+            fill="var(--accent-2)" opacity=".3"></rect>
+      <line x1="${x(medio).toFixed(1)}" x2="${x(medio).toFixed(1)}" y1="7" y2="28" stroke="var(--accent)" stroke-width="3"></line>
+      <text x="${x(bajo).toFixed(1)}" y="42" font-size="10.5" fill="var(--muted)" text-anchor="start">${F.eur(bajo, 0)}</text>
+      <text x="${x(alto).toFixed(1)}" y="42" font-size="10.5" fill="var(--muted)" text-anchor="end">${F.eur(alto, 0)}</text>
+    </svg>`;
+  }
+
+  function grafico(filas) {
+    const w = 980, h = 250, padT = 14, padB = 30, padL = 10, padR = 10;
+    const n = filas.length;
+    const maxV = Math.max(...filas.map((x) => x.r.ventasNetas), 1);
+    const bens = filas.map((x) => x.r.beneficio);
+    const maxB = Math.max(...bens, 0), minB = Math.min(...bens, 0);
+    const rgB = (maxB - minB) || 1;
+    const ancho = (w - padL - padR) / n;
+    const barra = Math.min(46, ancho * 0.56);
+    const cx = (i) => padL + ancho * i + ancho / 2;
+    const yV = (v) => padT + (1 - v / maxV) * (h - padT - padB);
+    const yB = (v) => padT + (1 - (v - minB) / rgB) * (h - padT - padB);
+    const linea = filas.map((x, i) => (i ? 'L' : 'M') + cx(i).toFixed(1) + ' ' + yB(x.r.beneficio).toFixed(1)).join(' ');
+    const cero = yB(0);
+    return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" role="img" aria-label="Evolución mensual de ventas y beneficio">
+      <line x1="${padL}" x2="${w - padR}" y1="${cero.toFixed(1)}" y2="${cero.toFixed(1)}" stroke="var(--line)" stroke-width="1"></line>
+      ${filas.map((x, i) => {
+      const v = x.r.ventasNetas;
+      const alt = Math.max(0, h - padB - yV(v));
+      return `<rect x="${(cx(i) - barra / 2).toFixed(1)}" y="${yV(v).toFixed(1)}" width="${barra.toFixed(1)}"
+          height="${alt.toFixed(1)}" rx="2" fill="var(--accent-2)" opacity="${x.sinHistorico ? '.12' : x.enCurso ? '.32' : '.55'}">
+          <title>${x.etiqueta}: ${F.eur(v, 0)} de venta neta · beneficio ${F.eur(x.r.beneficio, 0)}</title></rect>`;
+    }).join('')}
+      <path d="${linea}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path>
+      ${filas.map((x, i) => `<circle cx="${cx(i).toFixed(1)}" cy="${yB(x.r.beneficio).toFixed(1)}" r="3.2"
+        fill="${x.r.beneficio < 0 ? 'var(--crit)' : 'var(--ok)'}"><title>${x.etiqueta}: beneficio ${F.eur(x.r.beneficio, 0)}</title></circle>`).join('')}
+      ${filas.map((x, i) => `<text x="${cx(i).toFixed(1)}" y="${h - 10}" text-anchor="middle" font-size="10"
+        fill="var(--muted)">${x.etiqueta}</text>`).join('')}
+    </svg>`;
+  }
+
+  /* ---------- pintado ---------- */
+  function pintar() {
+    if (!cont) return;
+    cont.innerHTML = '';
+    const raiz = UI.el('<div></div>');
+    const c = cfg();
+    const a = analisis();
+
+    raiz.appendChild(UI.el(`<div class="aviso"><div>
+      <h4>Esto es una estimación orientativa, no una tasación</h4>
+      <p>Reproduce el criterio que usan habitualmente compradores y brókers de negocios de Amazon: un múltiplo
+      sobre el beneficio del vendedor (SDE) de los últimos doce meses, corregido por los factores de riesgo que
+      miran en la due diligence. El precio real de una operación depende de la auditoría de cuentas, del comprador
+      concreto y del momento del mercado: dos negocios con las mismas cifras se venden a precios distintos.
+      Ninguna cifra de esta pantalla es una oferta, un valor contable ni un asesoramiento financiero.</p></div></div>`));
+
+    if (a.vacio) {
+      raiz.appendChild(UI.el(`<div class="empty"><h3>Todavía no hay ventas que valorar</h3>
+        <p>La valoración parte del beneficio de los últimos doce meses. En cuanto haya pedidos cargados
+        (módulo Datos), esta pantalla calcula el SDE y el múltiplo.</p></div>`));
+      cont.appendChild(raiz);
+      return;
+    }
+
+    if (a.factor > 1) {
+      raiz.appendChild(UI.el(`<div class="aviso warn"><div>
+        <h4>No hay doce meses de histórico: el múltiplo sobre menos de un año no es fiable</h4>
+        <p>Solo hay datos desde el ${F.fecha(a.primera)}, es decir ${F.n(a.mesesNegocio, 0)} meses.
+        El cálculo suma los ${F.n(a.diasSumados)} días del periodo ${F.fecha(a.desdeB)} → ${F.fecha(a.hastaB)}
+        y los eleva a año multiplicando por <b>${F.n(a.factor, 2)}</b>, así que cualquier estacionalidad,
+        promoción o rotura de stock de esos meses queda multiplicada por igual. Un comprador exigirá doce meses
+        cerrados antes de poner un precio; hasta entonces, trata la cifra como un orden de magnitud.</p></div></div>`));
+    }
+
+    /* ---- valor ---- */
+    const sinValor = !(a.sde > 0);
+    const bloqueValor = sinValor
+      ? `<div class="aviso crit" style="margin-bottom:0"><div>
+           <h4>Con un SDE anual de ${F.eur(a.sde, 0)} no hay valoración por múltiplo</h4>
+           <p>El método de múltiplo solo funciona sobre beneficio positivo. Un negocio que no gana dinero se
+           negocia por sus activos: básicamente el stock a coste (${F.eur(a.stock, 0)}) y, si acaso, la marca y
+           los listados. Antes de plantear una venta hay que devolver el SDE a positivo.</p></div></div>`
+      : `<div class="mini">Valor central estimado</div>
+         <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:3.4rem;line-height:1.02;
+           font-variant-numeric:tabular-nums">${F.eur(a.valor, 0)}</div>
+         <div class="mini" style="margin-bottom:6px">Rango habitual de negociación
+           <b>${F.eur(a.bajo, 0)}</b> — <b>${F.eur(a.alto, 0)}</b>
+           <span class="est">EST.</span></div>
+         ${barraRango(a.bajo, a.valor, a.alto)}`;
+
+    raiz.appendChild(UI.el(`<div class="card" style="margin-top:16px">
+      <div class="hd"><h3>Valor estimado si vendieras hoy</h3>
+        <span class="mini">SDE × múltiplo ajustado · periodo ${F.fecha(a.desdeB)} → ${F.fecha(a.hastaB)}</span><span class="sp"></span>
+        <span class="badge ${sinValor ? 'crit' : 'info'}">${F.n(a.mult, 2)}x</span></div>
+      <div class="bd"><div class="grid g2" style="align-items:center">
+        <div>${bloqueValor}</div>
+        <div class="cascada">
+          <div class="ln"><span>Beneficio real del periodo (${F.n(a.diasSumados)} d)</span><b>${F.eur(a.tot.beneficio, 0)}</b></div>
+          <div class="ln"><span>Elevado a doce meses (× ${F.n(a.factor, 2)})</span><b>${F.eur(a.anual.beneficio, 0)}${a.factor > 1 ? ' <span class="est">EST.</span>' : ''}</b></div>
+          <div class="ln"><span>+ gastos que el comprador no heredaría</span><b>${a.addAnual ? F.eur(a.addAnual, 0) : '—'}</b></div>
+          <div class="ln tot"><span>SDE anual</span><b>${F.eur(a.sde, 0)}</b></div>
+          <div class="ln"><span>× múltiplo ajustado</span><b>${F.n(a.mult, 2)}x</b></div>
+          <div class="ln tot"><span>Valor del negocio</span><b>${sinValor ? '—' : F.eur(a.valor, 0)}</b></div>
+          <div class="ln"><span>+ stock a coste, que se paga aparte</span><b>${F.eur(a.stock, 0)}</b></div>
+        </div>
+      </div></div></div>`));
+
+    /* ---- supuestos ---- */
+    const sup = UI.el(`<div class="card" style="margin-top:16px">
+      <div class="hd"><h3>Supuestos</h3><span class="mini">mueven directamente la cifra de arriba</span></div>
+      <div class="bd"><div class="grid g3">
+        <div>
+          <label class="f">Múltiplo base sobre el SDE anual
+            <input id="vaBase" type="number" step="0.1" min="1" max="6" value="${a.base}"></label>
+          <div class="chips" id="vaPre" style="margin-top:7px">
+            ${[[2.5, 'conservador'], [3, 'mercado'], [3.8, 'agresivo']].map(([v, t]) =>
+      `<button class="chip ${Math.abs(a.base - v) < 0.001 ? 'on' : ''}" data-v="${v}">${F.n(v, 1)}x ${t}</button>`).join('')}
+          </div>
+          <div class="mini" style="margin-top:6px">Los ajustes de riesgo se suman a este número.</div>
+        </div>
+        <div>
+          <label class="f">¿La marca está registrada?</label>
+          <div class="seg" id="vaMarca">
+            <button data-v="1" class="${c.marcaRegistrada === true ? 'on' : ''}">Sí</button>
+            <button data-v="0" class="${c.marcaRegistrada === false ? 'on' : ''}">No</button>
+          </div>
+          <div class="mini" style="margin-top:6px">${c.marcaRegistrada == null
+        ? 'Sin responder: mientras tanto este factor no suma ni resta.'
+        : 'Afecta al múltiplo en ' + F.n(c.marcaRegistrada ? 0.3 : -0.3, 2) + 'x.'}</div>
+        </div>
+        <div>
+          <label class="f">Otros gastos no heredables (€/año)
+            <input id="vaOtros" type="number" step="10" value="${a.otros}"></label>
+          <div class="mini" style="margin-top:6px">Lo que pagas por tu cuenta y no está dado de alta en Gastos:
+          tu propio sueldo, vehículo, viajes, cuota de autónomo… Se suma al SDE.</div>
+        </div>
+      </div></div></div>`);
+    raiz.appendChild(sup);
+
+    /* ---- add-backs ---- */
+    const gastos = (A.DB().gastos || []).filter((g) => g.activo !== false);
+    const card = UI.el(`<div class="card" style="margin-top:16px">
+      <div class="hd"><h3>Gastos que el comprador no heredaría</h3>
+        <span class="mini">márcalos y se devuelven al beneficio (SDE)</span></div>
+      <div class="bd"></div></div>`);
+    const bd = card.querySelector('.bd');
+    if (!gastos.length) {
+      bd.appendChild(UI.el(`<div class="aviso warn" style="margin-bottom:0"><div>
+        <h4>No hay ningún gasto dado de alta, así que el beneficio de partida está inflado</h4>
+        <p>El ERP descuenta lo que cobra Amazon, pero no la gestoría, la cuota de Seller Central o el embalaje
+        mientras no los registres en Gastos. Con gastos a cero, el SDE de esta pantalla —y por tanto la
+        valoración— sale por encima de la realidad.</p></div></div>`));
+      const ir = UI.el('<button class="btn sec" style="margin-top:10px">Ir a Gastos</button>');
+      ir.addEventListener('click', () => A.ir('gastos'));
+      bd.appendChild(ir);
+    } else {
+      const sel = new Set(c.addbacks);
+      const filas = gastos.map((g) => ({
+        g, importe: a.detalle.get(g.id) || 0, marcado: sel.has(g.id),
+      })).sort((x, z) => z.importe - x.importe);
+      const t = UI.tabla([
+        {
+          k: 'marcado', t: 'No heredable', sort: false,
+          r: (f) => `<input type="checkbox" data-id="${A.esc(f.g.id)}" ${f.marcado ? 'checked' : ''}
+            aria-label="Marcar ${A.esc(f.g.concepto)} como no heredable">`,
+        },
+        {
+          k: 'concepto', t: 'Concepto', cls: 'wrap', sort: false,
+          r: (f) => `<b>${A.esc(f.g.concepto)}</b><div class="mini">${A.esc(f.g.categoria || '')}
+            ${f.g.tipo === 'variable' ? '· variable' : '· ' + A.esc(f.g.periodicidad || 'mensual')}</div>`,
+        },
+        { k: 'importe', t: 'En el periodo', num: true, sort: false, r: (f) => f.importe ? F.eur(f.importe) : '<span class="mini">—</span>' },
+        {
+          k: 'anual', t: 'Anualizado', num: true, sort: false,
+          r: (f) => f.importe ? `<b>${F.eur(f.importe * a.factor)}</b>` : '<span class="mini">—</span>',
+        },
+        {
+          k: 'efecto', t: 'Efecto en el valor', num: true, sort: false,
+          r: (f) => f.marcado && f.importe
+            ? `<span class="pos">+${F.eur(f.importe * a.factor * a.mult, 0)}</span>`
+            : '<span class="mini">—</span>',
+        },
+      ], filas, { vacio: 'Sin gastos activos en el periodo.' });
+      t.addEventListener('change', (e) => {
+        const chk = e.target.closest('input[type=checkbox]');
+        if (!chk) return;
+        const id = chk.dataset.id;
+        const lista = new Set(c.addbacks);
+        if (chk.checked) lista.add(id); else lista.delete(id);
+        c.addbacks = [...lista];
+        A.Store.save();
+        A.Audit.log('valoracion:addbacks', {
+          entidad: 'valoracion', campo: 'addbacks', despues: c.addbacks.length + ' gastos marcados',
+        });
+        invalidar(); pintar();
+      });
+      bd.appendChild(t);
+      bd.appendChild(UI.el(`<p class="sec-note" style="margin-top:10px;margin-bottom:0">
+        Marca solo lo que desaparecería con el cambio de dueño: tu sueldo, tu coche, una herramienta que ya
+        tiene el comprador. Los gastos que el negocio necesita para funcionar —Seller Central, gestoría,
+        almacén, embalaje— <b>no</b> son add-backs: inflarlos es la forma más rápida de que la due diligence
+        tumbe la operación.</p>`));
+    }
+    raiz.appendChild(card);
+
+    /* ---- cómo sale el múltiplo ---- */
+    const filasAj = [{ tipo: 'base', factor: 'Múltiplo base', valor: 'Punto de partida del mercado', ajuste: a.base }]
+      .concat(a.ajustes)
+      .concat([{
+        tipo: 'total', factor: 'Múltiplo final aplicado', ajuste: a.mult,
+        valor: a.topeado ? 'Base y ajustes daban ' + F.n(a.bruto, 2) + 'x: limitado al rango razonable '
+          + F.n(MULT_MIN, 1) + 'x–' + F.n(MULT_MAX, 1) + 'x' : 'Base más los seis ajustes de riesgo',
+      }]);
+    const tAj = UI.tabla([
+      {
+        k: 'factor', t: 'Factor', cls: 'wrap', sort: false,
+        r: (f) => `<b>${A.esc(f.factor)}</b>${f.extra ? `<div class="mini mono">${f.extra}</div>` : ''}`,
+      },
+      {
+        k: 'valor', t: 'Lo que dicen tus cifras', cls: 'wrap', sort: false,
+        r: (f) => f.valor
+          ? `${A.esc(f.valor)}${f.est ? ' <span class="est">EST.</span>' : ''}`
+          : '<span class="mini">—</span>',
+      },
+      {
+        k: 'ajuste', t: 'Efecto', num: true, sort: false,
+        r: (f) => {
+          if (f.tipo) return `<b>${F.n(f.ajuste, 2)}x</b>`;
+          if (f.ajuste == null) return UI.badge('sin datos', 'mut');
+          const s = (f.ajuste > 0 ? '+' : '') + F.n(f.ajuste, 2) + 'x';
+          return `<b class="${f.ajuste > 0 ? 'pos' : f.ajuste < 0 ? 'neg' : ''}">${s}</b>`;
+        },
+      },
+      {
+        k: 'euros', t: 'En euros', num: true, sort: false,
+        r: (f) => {
+          if (f.tipo === 'total') return `<b>${sinValor ? '—' : F.eur(a.valor, 0)}</b>`;
+          if (f.tipo === 'base') return sinValor ? '<span class="mini">—</span>' : F.eur(a.sde * a.base, 0);
+          if (f.ajuste == null || sinValor) return '<span class="mini">—</span>';
+          const e = a.sde * f.ajuste;
+          return `<span class="${e > 0 ? 'pos' : e < 0 ? 'neg' : 'mini'}">${e > 0 ? '+' : ''}${F.eur(e, 0)}</span>`;
+        },
+      },
+      { k: 'porque', t: 'Por qué lo mira el comprador', cls: 'wrap', sort: false, r: (f) => f.porque ? `<span class="mini">${A.esc(f.porque)}</span>` : '' },
+    ], filasAj, { rowAttr: (f) => (f.tipo ? 'class="fila-total"' : '') });
+
+    raiz.appendChild(UI.el(`<h2>Cómo sale el múltiplo</h2>`));
+    raiz.appendChild(UI.el(`<p class="sec-note">
+      ${F.n(a.base, 2)}x de partida ${a.suma >= 0 ? '+' : '−'} ${F.n(Math.abs(a.suma), 2)}x de ajustes =
+      <b>${F.n(a.bruto, 2)}x</b>${a.topeado ? ', limitado a ' + F.n(a.mult, 2) + 'x porque fuera del rango ' +
+        F.n(MULT_MIN, 1) + 'x–' + F.n(MULT_MAX, 1) + 'x ningún comprador de este tamaño de negocio compra ni vende.' : '.'}
+      La columna «en euros» es lo que cada factor suma o resta al precio con tu SDE actual.</p>`));
+    raiz.appendChild(tAj);
+
+    /* ---- evolución mensual ---- */
+    const filasMes = a.meses.concat(a.enCurso ? [a.enCurso] : []);
+    raiz.appendChild(UI.el('<h2>Evolución de los últimos doce meses</h2>'));
+    raiz.appendChild(UI.el(`<div class="card"><div class="hd"><h3>Venta neta y beneficio</h3>
+      <span class="mini">barras: venta neta · línea: beneficio (escalas distintas)</span></div>
+      <div class="bd" style="overflow-x:auto">${grafico(filasMes)}</div></div>`));
+
+    const tot = a.tot;
+    const filasTabla = filasMes.concat([{
+      etiqueta: 'Periodo con datos', total: true,
+      r: tot, sinHistorico: false,
+    }]);
+    raiz.appendChild(UI.tabla([
+      {
+        k: 'etiqueta', t: 'Mes', sort: false,
+        r: (f) => `<b>${A.esc(f.etiqueta)}</b>` + (f.total ? `<div class="mini">${F.n(a.mesesDatos)} meses · ${F.n(a.diasSumados)} días</div>`
+          : f.sinHistorico ? ' ' + UI.badge('sin histórico', 'mut')
+            : f.enCurso ? ' ' + UI.badge('en curso', 'info')
+              : f.parcialHist ? ' ' + UI.badge('parcial', 'warn') : ''),
+      },
+      { k: 'ventas', t: 'Venta neta', num: true, sort: false, r: (f) => f.r.ventasNetas ? F.eur(f.r.ventasNetas, 0) : '<span class="mini">—</span>' },
+      { k: 'uds', t: 'Uds', num: true, sort: false, r: (f) => f.r.unidades ? F.n(f.r.unidades) : '<span class="mini">—</span>' },
+      { k: 'ppc', t: 'Publicidad', num: true, sort: false, r: (f) => f.r.ppc ? `<span class="neg">−${F.eur(f.r.ppc, 0)}</span>` : '<span class="mini">—</span>' },
+      { k: 'gastos', t: 'Gastos propios', num: true, sort: false, r: (f) => f.r.gastos ? `<span class="neg">−${F.eur(f.r.gastos, 0)}</span>` : '<span class="mini">—</span>' },
+      {
+        k: 'beneficio', t: 'Beneficio', num: true, sort: false,
+        r: (f) => f.r.ventasBrutas || f.r.beneficio
+          ? `<b class="${f.r.beneficio < 0 ? 'neg' : 'pos'}">${F.eur(f.r.beneficio, 0)}</b>` : '<span class="mini">—</span>',
+      },
+      { k: 'margen', t: 'Margen', num: true, sort: false, r: (f) => f.r.ventasNetas ? F.pct(f.r.beneficio / f.r.ventasNetas) : '<span class="mini">—</span>' },
+    ], filasTabla, { rowAttr: (f) => (f.total ? 'class="fila-total"' : '') }));
+
+    const notas = [];
+    if (a.enCurso) {
+      notas.push('El mes en curso (' + a.enCurso.etiqueta + ') se muestra pero no entra en el cálculo: la ' +
+        'valoración se hace siempre sobre meses cerrados, que es lo que audita un comprador.');
+    }
+    if (a.primera > a.desdeB) {
+      notas.push('El primer mes del periodo solo tiene ventas desde el ' + F.fecha(a.primera) + ', así que ' +
+        'arrastra días sin actividad: la anualización sale por lo bajo, es decir conservadora.');
+    }
+    if (notas.length) raiz.appendChild(UI.el(`<p class="sec-note" style="margin-top:10px">${notas.join(' ')}</p>`));
+
+    /* ---- palancas ---- */
+    if (a.mejoras.length) {
+      raiz.appendChild(UI.el('<h2>Qué subiría el valor</h2>'));
+      raiz.appendChild(UI.el(`<p class="sec-note">
+        Cada punto sale de un factor que hoy te está penalizando. El efecto en euros es
+        ${sinValor ? 'incalculable mientras el SDE no sea positivo' : 'el ajuste del múltiplo aplicado a tu SDE actual de ' + F.eur(a.sde, 0)}
+        y se acumula con el resto. <span class="est">EST.</span></p>`));
+      const grid = UI.el('<div class="grid g2"></div>');
+      a.mejoras.forEach((mj) => {
+        grid.appendChild(UI.el(`<div class="card"><div class="bd">
+          <div style="display:flex;gap:12px;align-items:baseline">
+            <h3 style="flex:1">${A.esc(mj.titulo)}</h3>
+            <b class="pos" style="font-variant-numeric:tabular-nums;white-space:nowrap">${mj.euros > 0 ? '+' + F.eur(mj.euros, 0) : '—'}</b>
+          </div>
+          <p class="mini" style="margin:6px 0 0">${mj.texto}</p>
+        </div></div>`));
+      });
+      raiz.appendChild(grid);
+    }
+
+    raiz.appendChild(UI.el(`<p class="sec-note" style="margin-top:18px">
+      <b>Método.</b> Se calcula la cuenta de resultados real mes a mes (venta neta de IVA menos coste de producto,
+      comisiones, FBA, logística, devoluciones, publicidad y gastos propios), se suman los meses con histórico,
+      se elevan a doce meses si hace falta y se le devuelven los gastos marcados como no heredables: eso es el SDE.
+      El múltiplo parte de ${F.n(a.base, 2)}x y se corrige con seis factores de riesgo medidos sobre tus propios
+      datos. El stock a coste se muestra aparte porque en estas operaciones se paga además del precio del negocio.
+      No se contemplan deudas, contratos, litigios, cuentas suspendidas ni el valor de una lista de clientes fuera
+      de Amazon, que sí pesan en una operación real.</p>`));
+
+    /* ---- eventos ---- */
+    const guardar = (campo, antes, despues) => {
+      A.Store.save();
+      A.Audit.log('valoracion:' + campo, { entidad: 'valoracion', campo, antes, despues });
+      invalidar(); pintar();
+    };
+    sup.querySelector('#vaBase').addEventListener('change', (e) => {
+      const v = A.clamp(parseFloat(e.target.value) || 3, 1, 6);
+      const antes = c.multiploBase;
+      c.multiploBase = v;
+      guardar('multiploBase', F.n(antes, 2) + 'x', F.n(v, 2) + 'x');
+    });
+    sup.querySelectorAll('#vaPre .chip').forEach((b) => b.addEventListener('click', () => {
+      const antes = c.multiploBase;
+      c.multiploBase = parseFloat(b.dataset.v);
+      guardar('multiploBase', F.n(antes, 2) + 'x', F.n(c.multiploBase, 2) + 'x');
+    }));
+    sup.querySelectorAll('#vaMarca button').forEach((b) => b.addEventListener('click', () => {
+      const v = b.dataset.v === '1';
+      const antes = c.marcaRegistrada;
+      c.marcaRegistrada = c.marcaRegistrada === v ? null : v;
+      guardar('marcaRegistrada', antes == null ? 'sin declarar' : antes ? 'sí' : 'no',
+        c.marcaRegistrada == null ? 'sin declarar' : c.marcaRegistrada ? 'sí' : 'no');
+    }));
+    sup.querySelector('#vaOtros').addEventListener('change', (e) => {
+      const antes = c.otrosAddback || 0;
+      c.otrosAddback = Math.max(0, parseFloat(e.target.value) || 0);
+      guardar('otrosAddback', F.eur(antes, 0), F.eur(c.otrosAddback, 0));
+    });
+
+    cont.appendChild(raiz);
+  }
+
+  /* ---------- exportación ---------- */
+  function exportar() {
+    const a = analisis();
+    if (a.vacio) throw new Error('No hay ventas registradas: no se puede valorar el negocio.');
+    const filas = a.meses.concat(a.enCurso ? [a.enCurso] : []).map((x) => ({
+      Mes: x.etiqueta,
+      Desde: x.desde, Hasta: x.hasta,
+      Estado: x.sinHistorico ? 'sin histórico' : x.enCurso ? 'en curso' : x.parcialHist ? 'parcial' : 'completo',
+      VentaNeta: x.r.ventasNetas.toFixed(2), Unidades: x.r.unidades,
+      Publicidad: x.r.ppc.toFixed(2), GastosPropios: x.r.gastos.toFixed(2),
+      Beneficio: x.r.beneficio.toFixed(2),
+      Margen: x.r.ventasNetas ? (x.r.beneficio / x.r.ventasNetas * 100).toFixed(1) : '',
+    }));
+    filas.push({ Mes: '', Desde: '', Hasta: '', Estado: '', VentaNeta: '', Unidades: '', Publicidad: '', GastosPropios: '', Beneficio: '', Margen: '' });
+    filas.push({ Mes: 'SDE anual', VentaNeta: a.anual.ventasNetas.toFixed(2), Beneficio: a.sde.toFixed(2), Estado: a.factor > 1 ? 'anualizado x' + a.factor.toFixed(2) : 'doce meses reales' });
+    a.ajustes.forEach((x) => filas.push({ Mes: 'Ajuste: ' + x.factor, Estado: x.valor, Beneficio: x.ajuste == null ? 'sin datos' : x.ajuste.toFixed(2) + 'x' }));
+    filas.push({ Mes: 'Multiplo final', Beneficio: a.mult.toFixed(2) + 'x' });
+    filas.push({ Mes: 'Valor estimado', Beneficio: a.valor.toFixed(2), Estado: 'rango ' + a.bajo.toFixed(0) + ' - ' + a.alto.toFixed(0) });
+    filas.push({ Mes: 'Stock a coste (aparte)', Beneficio: a.stock.toFixed(2) });
+    A.CSV.descargar('valoracion-' + A.hoy() + '.csv', A.CSV.aCsv(filas,
+      ['Mes', 'Desde', 'Hasta', 'Estado', 'VentaNeta', 'Unidades', 'Publicidad', 'GastosPropios', 'Beneficio', 'Margen']));
+    return 'Valoración exportada: ' + F.eur(a.valor, 0) + ' a ' + F.n(a.mult, 2) + 'x';
+  }
+
+  A.registrar({
+    id: 'valoracion',
+    titulo: 'Valoración',
+    subtitulo: 'Cuánto vale la marca si la vendes hoy',
+    icono: '◇',
+    orden: 15,
+    /* Solo avisa cuando no hay nada que valorar: sin ventas o sin SDE positivo. */
+    contador: () => {
+      try {
+        const a = analisis();
+        return (a.vacio || !(a.sde > 0)) ? { n: '!', tono: 'warn' } : null;
+      } catch (e) { return null; }
+    },
+    render: (c2, acciones) => {
+      cont = c2;
+      const exp = UI.el('<button class="btn sec">Exportar CSV</button>');
+      exp.addEventListener('click', () => A.Tareas.run('Exportar valoración', async () => exportar()).catch(() => { }));
+      acciones.appendChild(exp);
+      pintar();
+    },
+  });
+})();
+
+
+/* ==================== assets/js/mod/contable.js ==================== */
+/* ==========================================================================
+   CIERRE CONTABLE — el puente entre el ERP y la gestoría.
+   Coge el periodo (mes o trimestre), lo ordena como una cuenta de resultados,
+   reparte el IVA repercutido por país y tipo, y lo deja en tres CSV: el
+   resumen, el asiento propuesto y el detalle de ventas para conciliar.
+   No sustituye a un programa de contabilidad: prepara los números para que
+   la gestoría los cuadre y los presente.
+   ========================================================================== */
+(function () {
+  'use strict';
+  const A = window.App;
+  const F = A.fmt, UI = A.UI, Q = A.Q, Calc = A.Calc;
+
+  const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+    'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+  /* Cuentas del PGC español sugeridas para cada concepto. Son una propuesta:
+     el plan contable de cada empresa puede usar otras subcuentas. */
+  const C = {
+    clientes: ['430', 'Clientes'],
+    ventas: ['700', 'Ventas de mercaderías'],
+    ivaRep: ['477', 'Hacienda Pública, IVA repercutido'],
+    devol: ['708', 'Devoluciones de ventas'],
+    compras: ['600', 'Compras de mercaderías'],
+    comision: ['623', 'Servicios de profesionales independientes'],
+    transporte: ['624', 'Transportes'],
+    publicidad: ['627', 'Publicidad, propaganda y relaciones públicas'],
+    otros: ['629', 'Otros servicios'],
+    arrend: ['621', 'Arrendamientos y cánones'],
+    aprov: ['602', 'Compras de otros aprovisionamientos'],
+    sueldos: ['640', 'Sueldos y salarios'],
+    tributos: ['631', 'Otros tributos'],
+    banca: ['626', 'Servicios bancarios y similares'],
+    proveedor: ['400', 'Proveedores'],
+    acreedor: ['410', 'Acreedores por prestaciones de servicios'],
+  };
+
+  /* Las categorías son las del módulo de Gastos. */
+  const CUENTA_GASTO = {
+    'Software y suscripciones': C.otros,
+    'Asesoría y contabilidad': C.comision,
+    'Sueldos y personal': C.sueldos,
+    'Almacén y alquiler': C.arrend,
+    'Embalaje y consumibles': C.aprov,
+    'Agencias y servicios': C.otros,
+    'Impuestos y tasas': C.tributos,
+    'Financieros': C.banca,
+    'Marketing fuera de Amazon': C.publicidad,
+    'Otros': C.otros,
+  };
+
+  const ui = { modo: 'mes', periodo: '', pais: '' };
+  let cont = null;
+  let ultimo = null;
+
+  /* ======================= utilidades locales ======================= */
+  const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+  const cero = (v) => (Math.abs(v) < 0.005 ? 0 : v);
+  const pad2 = (n) => (n < 10 ? '0' + n : String(n));
+  const csvNum = (v, d) => (v == null || !isFinite(v)) ? '' : Number(v).toFixed(d == null ? 2 : d).replace('.', ',');
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const finMes = (ym) => new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7), 0)).toISOString().slice(0, 10);
+  const cuenta = (c) => c[0] + ' ' + c[1];
+
+  function primeraFecha() {
+    const ped = A.DB().pedidos;
+    let min = null;
+    for (let i = 0; i < ped.length; i++) { const f = ped[i].fecha; if (f && (!min || f < min)) min = f; }
+    return min || A.DB().meta.fechaRef;
+  }
+
+  function opcionesPeriodo() {
+    const ref = A.DB().meta.fechaRef, ini = primeraFecha();
+    const out = [];
+    if (ui.modo === 'mes') {
+      let y = +ini.slice(0, 4), m = +ini.slice(5, 7);
+      const yF = +ref.slice(0, 4), mF = +ref.slice(5, 7);
+      while (y < yF || (y === yF && m <= mF)) { out.push(y + '-' + pad2(m)); m++; if (m > 12) { m = 1; y++; } }
+    } else {
+      let y = +ini.slice(0, 4), t = Math.ceil(+ini.slice(5, 7) / 3);
+      const yF = +ref.slice(0, 4), tF = Math.ceil(+ref.slice(5, 7) / 3);
+      while (y < yF || (y === yF && t <= tF)) { out.push(y + '-T' + t); t++; if (t > 4) { t = 1; y++; } }
+    }
+    if (!out.length) out.push(ui.modo === 'mes' ? ref.slice(0, 7) : ref.slice(0, 4) + '-T' + Math.ceil(+ref.slice(5, 7) / 3));
+    return out.reverse();
+  }
+
+  const esTrimestre = (p) => p.indexOf('-T') > 0;
+
+  function rangoDe(p) {
+    if (esTrimestre(p)) {
+      const y = p.slice(0, 4), t = +p.slice(6);
+      return { desde: y + '-' + pad2(t * 3 - 2) + '-01', hasta: finMes(y + '-' + pad2(t * 3)) };
+    }
+    return { desde: p + '-01', hasta: finMes(p) };
+  }
+
+  function etiqueta(p) {
+    if (esTrimestre(p)) return p.slice(6) + '.º trimestre de ' + p.slice(0, 4);
+    return MESES[+p.slice(5, 7) - 1] + ' de ' + p.slice(0, 4);
+  }
+
+  /* ======================= cálculo del periodo ======================= */
+  function calcular() {
+    const per = ui.periodo;
+    const r = rangoDe(per);
+    const ref = A.DB().meta.fechaRef;
+    const filtro = { desde: r.desde, hasta: r.hasta };
+    if (ui.pais) filtro.pais = ui.pais;
+
+    /* Los totales salen del mismo motor que el resto del ERP: si aquí saliera
+       otra cifra que en Rentabilidad, uno de los dos estaría mintiendo. */
+    const rent = Calc.rentabilidad(filtro);
+
+    const memoCoste = new Map(), memoUnidad = new Map();
+    const costeDe = (sku, fecha) => {
+      const k = sku + '|' + fecha;
+      if (!memoCoste.has(k)) memoCoste.set(k, Calc.coste(sku, fecha));
+      return memoCoste.get(k);
+    };
+    const unidadDe = (sku, pais, fecha) => {
+      const k = sku + '|' + pais + '|' + costeDe(sku, fecha);
+      if (!memoUnidad.has(k)) memoUnidad.set(k, Calc.unidad(sku, pais, fecha));
+      return memoUnidad.get(k);
+    };
+
+    const mapa = new Map();
+    const nodo = (p) => {
+      let n = mapa.get(p);
+      if (!n) {
+        n = {
+          pais: p, tipo: Calc.iva(p), brutas: 0, netas: 0, iva: 0, unidades: 0, lineas: 0,
+          pedidos: new Set(), cogs: 0, referral: 0, fba: 0, logistica: 0,
+          devoluciones: 0, devUnidades: 0, ppc: 0,
+        };
+        mapa.set(p, n);
+      }
+      return n;
+    };
+
+    /* Un solo recorrido por las líneas del periodo: agrega por mercado y a la
+       vez deja preparado el detalle que se exporta para conciliar. */
+    const lineas = [];
+    Q.pedidos(filtro).forEach((o) => {
+      const n = nodo(o.pais);
+      const tipo = Calc.iva(o.pais);
+      const base = o.importe / (1 + tipo);
+      const u = unidadDe(o.sku, o.pais, o.fecha);
+      /* Las tarifas se prorratean sobre el neto realmente cobrado, igual que en
+         el motor de rentabilidad, no sobre el precio de catálogo. */
+      const escala = u.netoVenta ? base / (u.netoVenta * o.unidades) : 1;
+      const esc = isFinite(escala) ? escala : 1;
+      n.brutas += o.importe; n.netas += base; n.iva += o.importe - base;
+      n.unidades += o.unidades; n.lineas++;
+      n.pedidos.add(o.pedidoId || o.fecha + o.sku);
+      n.cogs += costeDe(o.sku, o.fecha) * o.unidades;
+      n.referral += u.referral * o.unidades * esc;
+      n.fba += u.fba * o.unidades;
+      n.logistica += u.logistica * o.unidades;
+      lineas.push({
+        fecha: o.fecha, pedido: o.pedidoId || '', pais: o.pais, sku: o.sku, asin: o.asin || '',
+        canal: o.canal || '', unidades: o.unidades, bruto: o.importe, tipo, base, cuota: o.importe - base,
+      });
+    });
+
+    (A.DB().devoluciones || []).forEach((d) => {
+      if (d.fecha < r.desde || d.fecha > r.hasta) return;
+      if (ui.pais && d.pais !== ui.pais) return;
+      const n = nodo(d.pais);
+      n.devoluciones += Number(d.importe) || 0;
+      n.devUnidades += Number(d.unidades) || 0;
+    });
+
+    Q.ppc('campanas', { desde: r.desde, hasta: r.hasta, pais: ui.pais || undefined }).forEach((c) => {
+      nodo(c.pais).ppc += Number(c.gasto) || 0;
+    });
+
+    const paises = [...mapa.values()].sort((a, b) => b.brutas - a.brutas);
+    paises.forEach((n) => { n.nPedidos = n.pedidos.size; });
+
+    /* Gastos propios: no son de ningún mercado, así que van aparte. Si la
+       consulta está filtrada por país, el motor ya los ha prorrateado. */
+    const gastoPorId = new Map((A.DB().gastos || []).map((g) => [g.id, g]));
+    const gastos = (rent.gastosDetalle || []).map((g) => {
+      const orig = gastoPorId.get(g.id);
+      const cat = (orig && orig.categoria) || 'Otros';
+      return {
+        concepto: g.concepto, categoria: cat, tipo: g.tipo, importe: g.importe,
+        cuenta: CUENTA_GASTO[cat] || C.otros,
+      };
+    }).sort((a, b) => b.importe - a.importe);
+
+    lineas.sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
+
+    const d = {
+      periodo: per, etiqueta: etiqueta(per), rango: r, pais: ui.pais,
+      abierto: r.hasta > ref, ref, rent, paises, lineas, gastos,
+      /* Fecha del asiento: el último día del periodo, salvo que aún no haya llegado. */
+      fechaAsiento: r.hasta > ref ? ref : r.hasta,
+    };
+    d.asientos = asientos(d);
+    d.conciliacion = conciliacion(d);
+    ultimo = d;
+    return d;
+  }
+
+  /* ======================= asiento propuesto ======================= */
+  function asientos(d) {
+    const out = [];
+    let n = 0;
+    const bloque = () => { n++; };
+    const add = (c, debe, haber, concepto, pais, nota) => {
+      if (Math.abs(debe || 0) < 0.005 && Math.abs(haber || 0) < 0.005) return;
+      out.push({
+        asiento: n, fecha: d.fechaAsiento, cuenta: c[0], denominacion: c[1],
+        debe: r2(debe || 0), haber: r2(haber || 0), concepto, pais: pais || '', nota: nota || '',
+      });
+    };
+
+    d.paises.forEach((p) => {
+      const m = p.pais;
+      if (p.brutas) {
+        bloque();
+        add(C.clientes, p.brutas, 0, 'Ventas Amazon ' + m + ' del periodo (pendiente de liquidar)', m,
+          'Si contabilizas por liquidación de Amazon, la contrapartida es la cuenta 572 en la fecha del abono.');
+        add(C.ventas, 0, p.netas, 'Ventas de mercaderías ' + m + ' (base imponible)', m, '');
+        add(C.ivaRep, 0, p.iva, 'IVA repercutido ' + m + ' al ' + F.pct(p.tipo, 0), m,
+          m === 'ES' ? 'Modelo 303' : 'Venta a distancia UE: OSS (modelo 369) si sale de España; IVA local si el stock ya estaba en ' + m + '.');
+      }
+      if (p.devoluciones) {
+        bloque();
+        add(C.devol, p.devoluciones, 0, 'Devoluciones y reembolsos ' + m, m,
+          'El ERP guarda el importe reembolsado sin separar la cuota: la rectificación del IVA la hace la gestoría.');
+        add(C.clientes, 0, p.devoluciones, 'Contrapartida de devoluciones ' + m, m, '');
+      }
+      if (p.referral || p.fba || p.logistica) {
+        bloque();
+        add(C.comision, p.referral, 0, 'Comisiones de venta Amazon ' + m, m, 'Importe estimado con la ficha de tarifas del producto.');
+        add(C.transporte, p.fba, 0, 'Logística FBA ' + m, m, 'Importe estimado con la ficha de tarifas del producto.');
+        add(C.transporte, p.logistica, 0, 'Envío y logística propia ' + m, m, 'Importe estimado con la ficha de tarifas del producto.');
+        add(C.acreedor, 0, p.referral + p.fba + p.logistica, 'Servicios de Amazon ' + m, m,
+          'Amazon los descuenta de la liquidación: revisa la factura de servicios para el IVA soportado.');
+      }
+      if (p.ppc) {
+        bloque();
+        add(C.publicidad, p.ppc, 0, 'Amazon Ads ' + m, m, '');
+        add(C.acreedor, 0, p.ppc, 'Contrapartida publicidad ' + m, m, '');
+      }
+      if (p.cogs) {
+        bloque();
+        add(C.compras, p.cogs, 0, 'Coste de la mercancía vendida ' + m, m,
+          'Si llevas inventario permanente esto no es una compra: va por 610 contra existencias (300).');
+        add(C.proveedor, 0, p.cogs, 'Contrapartida coste de ventas ' + m, m, '');
+      }
+    });
+
+    if (d.gastos.length) {
+      bloque();
+      let tot = 0;
+      d.gastos.forEach((g) => {
+        tot += g.importe;
+        add(g.cuenta, g.importe, 0, g.concepto + ' (' + g.categoria + ')', '',
+          g.tipo === 'variable' ? 'Gasto variable imputado por unidades, pedidos o ventas del periodo.'
+            : 'Gasto fijo repartido por los días del periodo.');
+      });
+      add(C.acreedor, 0, tot, 'Contrapartida de gastos del periodo', '',
+        'Sin el IVA soportado: el ERP no guarda las facturas de gasto.');
+    }
+    return out;
+  }
+
+  /* ======================= conciliación ======================= */
+  function conciliacion(d) {
+    const rent = d.rent;
+    const brutoDetalle = A.sum(d.lineas, (l) => r2(l.bruto));
+    const baseDetalle = A.sum(d.lineas, (l) => r2(l.base));
+    const cuotaDetalle = A.sum(d.lineas, (l) => r2(l.bruto) - r2(l.base));
+    const brutoPaises = A.sum(d.paises, (p) => p.brutas);
+    const ivaPaises = A.sum(d.paises, (p) => p.iva);
+    const debe = A.sum(d.asientos, (x) => x.debe);
+    const haber = A.sum(d.asientos, (x) => x.haber);
+    return [
+      {
+        t: 'Ventas brutas del periodo frente al detalle por pedido',
+        a: rent.ventasBrutas, b: brutoDetalle,
+        etA: 'Cuenta de resultados', etB: 'Suma del CSV de ventas (redondeado a céntimo)',
+      },
+      {
+        t: 'Base imponible más cuota frente a la venta facturada',
+        a: brutoDetalle, b: baseDetalle + cuotaDetalle,
+        etA: 'Importe con IVA', etB: 'Base + cuota, línea a línea',
+      },
+      {
+        t: 'IVA repercutido del desglose por mercado frente al total',
+        a: rent.iva, b: ivaPaises,
+        etA: 'Cuenta de resultados', etB: 'Suma del desglose por país',
+      },
+      {
+        t: 'Ventas del desglose por mercado frente al total',
+        a: rent.ventasBrutas, b: brutoPaises,
+        etA: 'Cuenta de resultados', etB: 'Suma del desglose por país',
+      },
+      {
+        t: 'El asiento propuesto cuadra',
+        a: debe, b: haber, etA: 'Total debe', etB: 'Total haber',
+      },
+    ].map((x) => Object.assign(x, { dif: cero(x.a - x.b) }));
+  }
+
+  /* ======================= cuenta de resultados ======================= */
+  function lineasPyG(d) {
+    const r = d.rent;
+    const base = r.ventasNetas;
+    const pct = (v) => (base ? v / base : null);
+    const L = [];
+    const add = (t, v, o) => L.push(Object.assign({ t, v, pct: pct(v) }, o || {}));
+
+    add('Ventas facturadas (con IVA)', r.ventasBrutas, { memo: true, cta: '' });
+    add('IVA repercutido (no es ingreso: es deuda con Hacienda)', -r.iva, { memo: true, cta: cuenta(C.ivaRep) });
+    add('Ingresos por ventas (base imponible)', r.ventasNetas, { tot: true, cta: cuenta(C.ventas) });
+    add('Devoluciones y reembolsos', -r.devoluciones, { cta: cuenta(C.devol) });
+    add('Coste de la mercancía vendida', -r.cogs, { cta: cuenta(C.compras) });
+    add('Margen bruto', r.ventasNetas - r.devoluciones - r.cogs, { tot: true });
+    add('Comisiones de venta de Amazon', -r.referral, { cta: cuenta(C.comision), est: true });
+    add('Logística FBA', -r.fba, { cta: cuenta(C.transporte), est: true });
+    add('Envío y logística propia', -r.logistica, { cta: cuenta(C.transporte), est: true });
+    add('Publicidad (Amazon Ads)', -r.ppc, { cta: cuenta(C.publicidad) });
+    add('Resultado antes de gastos propios', r.brutoAntesGastos, { tot: true });
+    add('Gastos fijos de estructura', -r.gastosFijos, { cta: cuenta(C.otros), est: !!d.pais });
+    add('Gastos variables', -r.gastosVariables, { cta: cuenta(C.aprov), est: !!d.pais });
+    add('Resultado del periodo', r.beneficio, { tot: true, fuerte: true });
+    return L;
+  }
+
+  /* ======================= exportaciones ======================= */
+  function sufijo(d) {
+    return d.periodo + (d.pais ? '-' + d.pais : '');
+  }
+
+  function exportarResumen() {
+    return A.Tareas.run('Exportar resumen contable', async () => {
+      const d = calcular();
+      if (!d.lineas.length) throw new Error('No hay ventas en ' + d.etiqueta + ': no hay resumen que exportar.');
+      const filas = lineasPyG(d).map((l) => ({
+        Periodo: d.etiqueta, Desde: d.rango.desde, Hasta: d.rango.hasta,
+        Mercado: d.pais || 'TODOS', Concepto: l.t,
+        Cuenta: l.cta || '', Importe: csvNum(l.v),
+        PctSobreVentas: l.pct == null ? '' : csvNum(l.pct * 100),
+        Estimado: l.est ? 'SI' : 'NO',
+      }));
+      A.CSV.descargar('contable-resumen-' + sufijo(d) + '.csv', A.CSV.aCsv(filas));
+      A.Audit.log('contable:resumen', { entidad: 'contable', ref: d.periodo, despues: filas.length + ' conceptos' });
+      return filas.length + ' conceptos · ' + d.etiqueta;
+    });
+  }
+
+  function exportarAsientos() {
+    return A.Tareas.run('Exportar asientos', async () => {
+      const d = calcular();
+      if (!d.asientos.length) throw new Error('El periodo ' + d.etiqueta + ' no tiene ningún movimiento que asentar.');
+      const filas = d.asientos.map((x) => ({
+        Fecha: x.fecha, Asiento: x.asiento, Cuenta: x.cuenta, Denominacion: x.denominacion,
+        Debe: x.debe ? csvNum(x.debe) : '', Haber: x.haber ? csvNum(x.haber) : '',
+        Concepto: x.concepto, Mercado: x.pais, Periodo: d.etiqueta, Aviso: x.nota,
+      }));
+      A.CSV.descargar('contable-asientos-' + sufijo(d) + '.csv', A.CSV.aCsv(filas));
+      A.Audit.log('contable:asientos', { entidad: 'contable', ref: d.periodo, despues: filas.length + ' apuntes' });
+      const debe = A.sum(d.asientos, (x) => x.debe);
+      return filas.length + ' apuntes · debe y haber ' + F.eur(debe, 0);
+    });
+  }
+
+  function exportarVentas() {
+    return A.Tareas.run('Exportar detalle de ventas', async () => {
+      const d = calcular();
+      if (!d.lineas.length) throw new Error('No hay líneas de pedido en ' + d.etiqueta + '.');
+      const filas = d.lineas.map((l) => ({
+        Fecha: l.fecha, Pedido: l.pedido, Mercado: l.pais, SKU: l.sku, ASIN: l.asin, Canal: l.canal,
+        Unidades: l.unidades, ImporteConIVA: csvNum(l.bruto), TipoIVA: csvNum(l.tipo * 100),
+        BaseImponible: csvNum(l.base), CuotaIVA: csvNum(r2(l.bruto) - r2(l.base)),
+      }));
+      A.CSV.descargar('contable-ventas-' + sufijo(d) + '.csv', A.CSV.aCsv(filas));
+      A.Audit.log('contable:ventas', { entidad: 'contable', ref: d.periodo, despues: filas.length + ' líneas' });
+      return filas.length + ' líneas · ' + F.eur(A.sum(d.lineas, (l) => r2(l.bruto)), 0) + ' facturados';
+    });
+  }
+
+  /* ======================= pintado ======================= */
+  function pintar() {
+    if (!cont) return;
+    cont.innerHTML = '';
+    const opciones = opcionesPeriodo();
+    if (!ui.periodo || opciones.indexOf(ui.periodo) < 0) ui.periodo = opciones[0];
+
+    const d = calcular();
+    const r = d.rent;
+    const raiz = UI.el('<div></div>');
+
+    /* --- barra de selección --- */
+    const barra = UI.el(`<div class="toolbar">
+      <div class="seg" id="cbModo">
+        <button data-m="mes" class="${ui.modo === 'mes' ? 'on' : ''}">Mes</button>
+        <button data-m="trimestre" class="${ui.modo === 'trimestre' ? 'on' : ''}">Trimestre</button>
+      </div>
+      <label class="f">Periodo<select id="cbPer">${opciones.map((p) =>
+      `<option value="${p}" ${p === ui.periodo ? 'selected' : ''}>${A.esc(cap(etiqueta(p)))}</option>`).join('')}</select></label>
+      <label class="f">Mercado<select id="cbPais">
+        <option value="">Todos los mercados</option>
+        ${Q.paises().map((p) => `<option value="${p}" ${ui.pais === p ? 'selected' : ''}>${p}</option>`).join('')}
+      </select></label>
+      <span class="mini">Del ${F.fecha(d.rango.desde)} al ${F.fecha(d.rango.hasta)} · ${F.n(d.lineas.length)} líneas de pedido</span>
+    </div>`);
+    raiz.appendChild(barra);
+
+    if (d.abierto) {
+      raiz.appendChild(UI.el(`<div class="aviso warn"><div>
+        <h4>Este periodo todavía no ha cerrado</h4>
+        <p>El ERP tiene datos hasta el ${F.fecha(d.ref)} y el periodo termina el ${F.fecha(d.rango.hasta)}.
+        Lo que ves está completo solo hasta esa fecha: no lo entregues como cierre definitivo.</p></div></div>`));
+    }
+
+    if (!d.lineas.length) {
+      raiz.appendChild(UI.el(`<div class="empty"><h3>Sin ventas en ${A.esc(d.etiqueta)}</h3>
+        <p>No hay ninguna línea de pedido en este periodo${d.pais ? ' para ' + A.esc(d.pais) : ''},
+        así que no se puede montar la cuenta de resultados. Elige otro periodo o quita el filtro de mercado.</p></div>`));
+      enlazar(barra);
+      cont.appendChild(raiz);
+      return;
+    }
+
+    /* --- KPIs --- */
+    raiz.appendChild(UI.el(`<div class="grid g4">
+      ${UI.kpi({
+      label: 'Ingresos (base imponible)', valor: F.eur(r.ventasNetas, 0),
+      sec: `${F.eur(r.ventasBrutas, 0)} facturados con IVA · ${F.n(r.pedidos)} pedidos`,
+    })}
+      ${UI.kpi({
+      label: 'IVA repercutido', valor: F.eur(r.iva, 0),
+      sec: `${F.n(d.paises.filter((p) => p.iva > 0).length)} mercados con cuota que declarar`,
+    })}
+      ${UI.kpi({
+      label: 'Resultado del periodo', valor: F.eur(r.beneficio, 0),
+      sec: `Margen sobre base imponible ${F.pct(r.margen)}`,
+      tono: r.beneficio < 0 ? 'crit' : r.margen != null && r.margen < 0.08 ? 'warn' : 'ok',
+    })}
+      ${UI.kpi({
+      label: 'Diferencias sin explicar', valor: F.n(d.conciliacion.filter((c) => Math.abs(c.dif) >= 0.005).length),
+      sec: 'Controles de conciliación que no cuadran a cero',
+      tono: d.conciliacion.some((c) => Math.abs(c.dif) >= 0.005) ? 'warn' : 'ok',
+    })}
+    </div>`));
+
+    /* --- cuenta de resultados --- */
+    const L = lineasPyG(d);
+    const pyg = UI.el(`<div class="card" style="margin-top:18px">
+      <div class="hd"><h3>Cuenta de resultados de ${A.esc(d.etiqueta)}</h3>
+        <span class="mini">${d.pais ? 'Mercado ' + A.esc(d.pais) : 'Todos los mercados'}</span></div>
+      <div class="bd" style="padding:0">
+        <div class="tblwrap" style="border:none;border-radius:0;box-shadow:none">
+        <table class="tbl"><thead><tr>
+          <th>Concepto</th><th>Cuenta sugerida</th><th class="num">Importe</th><th class="num">% s/ ingresos</th>
+        </tr></thead><tbody>
+        ${L.map((l) => `<tr class="${l.tot ? 'fila-total' : ''}">
+          <td class="wrap">${l.memo ? '<span class="mini">' : '<b>'}${A.esc(l.t)}${l.memo ? '</span>' : '</b>'}
+            ${l.est ? ' <span class="est">EST.</span>' : ''}</td>
+          <td><span class="mono mini">${A.esc(l.cta || '—')}</span></td>
+          <td class="num ${l.v < 0 ? 'neg' : l.fuerte ? 'pos' : ''}">${F.eur(cero(l.v))}</td>
+          <td class="num mini">${l.memo ? '' : F.pct(l.pct)}</td>
+        </tr>`).join('')}
+        </tbody></table></div>
+      </div></div>`);
+    raiz.appendChild(pyg);
+
+    raiz.appendChild(UI.el(`<p class="sec-note" style="margin-top:10px">
+      Las comisiones, la logística FBA y el envío salen de la ficha de tarifas de cada producto, no del informe de
+      liquidación de Amazon: son la mejor estimación del ERP y por eso van marcadas como <span class="est">EST.</span>
+      (el módulo Tarifas es el que compara lo esperado con lo realmente cobrado). El IVA soportado de tus compras y
+      gastos no está aquí: el ERP no guarda esas facturas, las tiene la gestoría.
+      ${d.pais ? ' Al filtrar por un mercado, los gastos generales se reparten en proporción a su facturación.' : ''}</p>`));
+
+    /* --- IVA por país y tipo --- */
+    const conIva = d.paises.filter((p) => p.brutas > 0);
+    const totBase = A.sum(conIva, (p) => p.netas), totCuota = A.sum(conIva, (p) => p.iva);
+    raiz.appendChild(UI.el(`<h2>IVA repercutido por país y tipo</h2>`));
+    raiz.appendChild(UI.el(`<div class="tblwrap">
+      <table class="tbl"><thead><tr>
+        <th>Mercado</th><th>Régimen probable</th><th class="num">Base imponible</th>
+        <th class="num">Tipo</th><th class="num">Cuota</th><th class="num">% de la cuota</th>
+      </tr></thead><tbody>
+      ${conIva.map((p) => `<tr>
+        <td><span class="pais">${A.esc(p.pais)}</span></td>
+        <td class="wrap"><span class="mini">${p.pais === 'ES'
+        ? 'IVA nacional · modelo 303'
+        : 'Venta a distancia intracomunitaria · ventanilla única (OSS, modelo 369)'}</span></td>
+        <td class="num">${F.eur(p.netas)}</td>
+        <td class="num">${F.pct(p.tipo, 0)}</td>
+        <td class="num"><b>${F.eur(p.iva)}</b></td>
+        <td class="num mini">${F.pct(totCuota ? p.iva / totCuota : null)}</td></tr>`).join('')}
+      <tr class="fila-total"><td>Total</td><td></td>
+        <td class="num">${F.eur(totBase)}</td><td class="num">—</td>
+        <td class="num">${F.eur(totCuota)}</td><td class="num">100,0 %</td></tr>
+      </tbody></table></div>`));
+
+    raiz.appendChild(UI.el(`<div class="aviso" style="margin-top:12px"><div>
+      <h4>Qué hace la gestoría con este desglose</h4>
+      <p>Las ventas en España van al modelo 303. Las ventas a particulares de otros países de la UE son ventas a
+      distancia: si superas el umbral de 10.000 € anuales se declaran con el IVA del país de destino, y lo normal es
+      hacerlo por la ventanilla única (OSS, modelo 369), que exige exactamente este reparto por país y tipo.
+      El reparto de arriba solo vale si la mercancía sale de España: si Amazon guarda tu stock en un almacén de
+      ${A.esc((conIva.find((p) => p.pais !== 'ES') || { pais: 'otro país' }).pais)} y lo vende allí mismo, esa venta
+      es interior de ese país y necesita registro de IVA local, no OSS. El ERP no sabe desde qué almacén salió cada
+      pedido, así que esa parte la tiene que confirmar la gestoría.</p>
+      <p style="margin-top:6px">Se aplica un único tipo general por país
+      (${A.esc(conIva.map((p) => p.pais + ' ' + F.pct(p.tipo, 0)).join(' · '))}). Si algún producto tributa a tipo
+      reducido, esa separación no está en el ERP y hay que hacerla a mano.</p></div></div>`));
+
+    /* --- asiento propuesto --- */
+    const MAX = 80;
+    const vis = d.asientos.slice(0, MAX);
+    const debe = A.sum(d.asientos, (x) => x.debe), haber = A.sum(d.asientos, (x) => x.haber);
+    raiz.appendChild(UI.el('<h2>Asiento propuesto</h2>'));
+    raiz.appendChild(UI.el(`<div class="aviso warn"><div>
+      <h4>Las cuentas son una propuesta, no una decisión contable</h4>
+      <p>El ERP sugiere las cuentas del PGC español que encajan con cada concepto, pero el plan contable de tu
+      empresa manda: la gestoría debe validarlas y ajustar las subcuentas antes de contabilizar nada.
+      El asiento se fecha el ${F.fecha(d.fechaAsiento)} y agrupa el periodo entero, no factura a factura.</p></div></div>`));
+    raiz.appendChild(UI.el(`<div class="tblwrap">
+      <table class="tbl"><thead><tr>
+        <th class="num">Nº</th><th>Fecha</th><th>Cuenta</th><th>Denominación</th>
+        <th class="num">Debe</th><th class="num">Haber</th><th>Concepto</th><th>Mercado</th>
+      </tr></thead><tbody>
+      ${vis.map((x) => `<tr>
+        <td class="num mini">${x.asiento}</td>
+        <td class="mini">${F.fecha(x.fecha)}</td>
+        <td><span class="mono">${x.cuenta}</span></td>
+        <td class="wrap"><span class="mini">${A.esc(x.denominacion)}</span></td>
+        <td class="num">${x.debe ? F.eur(x.debe) : '<span class="mini">—</span>'}</td>
+        <td class="num">${x.haber ? F.eur(x.haber) : '<span class="mini">—</span>'}</td>
+        <td class="wrap"><span class="mini">${A.esc(x.concepto)}</span></td>
+        <td>${x.pais ? '<span class="pais">' + A.esc(x.pais) + '</span>' : '<span class="mini">general</span>'}</td>
+      </tr>`).join('')}
+      <tr class="fila-total"><td></td><td></td><td></td><td>Total del asiento</td>
+        <td class="num">${F.eur(debe)}</td><td class="num">${F.eur(haber)}</td>
+        <td colspan="2" class="mini">${Math.abs(debe - haber) < 0.005
+        ? 'Debe y haber cuadran' : 'Descuadre de ' + F.eur(debe - haber)}</td></tr>
+      </tbody></table></div>`));
+    if (d.asientos.length > MAX) {
+      raiz.appendChild(UI.el(`<p class="sec-note" style="margin-top:8px">Se muestran ${MAX} de
+        ${F.n(d.asientos.length)} apuntes; el CSV los lleva todos.</p>`));
+    }
+
+    /* --- conciliación --- */
+    raiz.appendChild(UI.el('<h2>Conciliación</h2>'));
+    const descuadres = d.conciliacion.filter((c) => Math.abs(c.dif) >= 0.005);
+    if (descuadres.length) {
+      raiz.appendChild(UI.el(`<div class="aviso crit"><div>
+        <h4>${descuadres.length === 1 ? 'Un control no cuadra' : descuadres.length + ' controles no cuadran'}</h4>
+        <ul>${descuadres.map((c) => `<li>${A.esc(c.t)}: diferencia de <b>${F.eur(c.dif)}</b>
+          (${A.esc(c.etA)} ${F.eur(c.a)} frente a ${A.esc(c.etB)} ${F.eur(c.b)}).</li>`).join('')}</ul>
+        <p style="margin-top:6px">No entregues el cierre hasta saber de dónde sale esa diferencia. Si es de céntimos,
+        casi siempre es redondeo línea a línea; si es de euros, hay datos incompletos.</p></div></div>`));
+    } else {
+      raiz.appendChild(UI.el(`<div class="aviso ok"><div>
+        <h4>Los cinco controles cuadran a cero</h4>
+        <p>El total de la cuenta de resultados coincide con el detalle por pedido, con el desglose por mercado y con
+        el asiento propuesto. Lo que exportes es coherente entre los tres ficheros.</p></div></div>`));
+    }
+    raiz.appendChild(UI.el(`<div class="tblwrap">
+      <table class="tbl"><thead><tr>
+        <th>Control</th><th class="num">Referencia</th><th class="num">Comprobación</th>
+        <th class="num">Diferencia</th><th>Estado</th>
+      </tr></thead><tbody>
+      ${d.conciliacion.map((c) => `<tr>
+        <td class="wrap"><b>${A.esc(c.t)}</b><div class="mini">${A.esc(c.etA)} · ${A.esc(c.etB)}</div></td>
+        <td class="num">${F.eur(c.a)}</td><td class="num">${F.eur(c.b)}</td>
+        <td class="num ${Math.abs(c.dif) >= 0.005 ? 'neg strong' : ''}">${F.eur(c.dif)}</td>
+        <td>${Math.abs(c.dif) < 0.005 ? UI.badge('cuadra', 'ok') : UI.badge('revisar', 'crit')}</td>
+      </tr>`).join('')}
+      </tbody></table></div>`));
+
+    /* --- exportaciones --- */
+    raiz.appendChild(UI.el('<h2>Entregar a la gestoría</h2>'));
+    const exp = UI.el(`<div class="card"><div class="bd">
+      <div class="grid g3">
+        <div>
+          <b>1 · Resumen del periodo</b>
+          <p class="mini">Una fila por concepto de la cuenta de resultados, con su cuenta sugerida, su importe y su
+          peso sobre los ingresos. ${F.n(L.length)} filas.</p>
+          <button class="btn sec" id="cbExp1">Descargar resumen (CSV)</button>
+        </div>
+        <div>
+          <b>2 · Asientos</b>
+          <p class="mini">Un apunte por concepto y mercado con fecha, cuenta, debe, haber y descripción.
+          ${F.n(d.asientos.length)} apuntes que suman ${F.eur(debe, 0)} a cada lado.</p>
+          <button class="btn" id="cbExp2">Descargar asientos (CSV)</button>
+        </div>
+        <div>
+          <b>3 · Detalle de ventas</b>
+          <p class="mini">Una fila por línea de pedido con base, tipo y cuota, para conciliar el resumen contra los
+          pedidos uno a uno. ${F.n(d.lineas.length)} líneas.</p>
+          <button class="btn sec" id="cbExp3">Descargar ventas (CSV)</button>
+        </div>
+      </div></div></div>`);
+    exp.querySelector('#cbExp1').addEventListener('click', () => exportarResumen().catch(() => { }));
+    exp.querySelector('#cbExp2').addEventListener('click', () => exportarAsientos().catch(() => { }));
+    exp.querySelector('#cbExp3').addEventListener('click', () => exportarVentas().catch(() => { }));
+    raiz.appendChild(exp);
+
+    raiz.appendChild(UI.el(`<div class="aviso" style="margin-top:16px"><div>
+      <h4>Esto no es un programa de contabilidad</h4>
+      <p>El ERP no lleva libros, ni numera facturas, ni presenta modelos. Lo que hace es dejar los números del
+      negocio cuadrados y en un formato que la gestoría pueda leer sin tener que reconstruirlos desde los informes
+      de Amazon. Los importes salen de los pedidos, las tarifas configuradas y los gastos dados de alta: si falta
+      un gasto o una tarifa está mal, aquí saldrá mal también. Estos ficheros son para entregar y revisar, no para
+      presentar directamente ante Hacienda.</p></div></div>`));
+
+    enlazar(barra);
+    cont.appendChild(raiz);
+  }
+
+  function enlazar(barra) {
+    barra.querySelectorAll('#cbModo button').forEach((b) => b.addEventListener('click', () => {
+      ui.modo = b.dataset.m; ui.periodo = ''; pintar();
+    }));
+    barra.querySelector('#cbPer').addEventListener('change', (e) => { ui.periodo = e.target.value; pintar(); });
+    barra.querySelector('#cbPais').addEventListener('change', (e) => { ui.pais = e.target.value; pintar(); });
+  }
+
+  A.registrar({
+    id: 'contable',
+    titulo: 'Cierre contable',
+    subtitulo: 'El periodo cuadrado y listo para la gestoría',
+    icono: '§',
+    orden: 16,
+    render: (c, acciones) => {
+      cont = c;
+      const b = UI.el('<button class="btn sec">Asientos (CSV)</button>');
+      b.addEventListener('click', () => exportarAsientos().catch(() => { }));
       acciones.appendChild(b);
       pintar();
     },
