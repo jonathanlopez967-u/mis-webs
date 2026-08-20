@@ -2233,7 +2233,6 @@ window.SEED = function () {
       ['Promo', sinDato('Los descuentos y cupones llegan con el informe de transacciones'), ''],
       ['Costos publicitarios', menosSi(r.ppc), ''],
       ['Envío', menosSi(r.logistica), ''],
-      ['Envoltorio', sinDato('El envoltorio de regalo llega con el informe de transacciones'), ''],
       ['Coste de reembolso', menosSi(dv.coste), ''],
       ['Tarifas de Amazon', menosSi(tarifasAmz), ''],
       ['Coste de los bienes', menosSi(r.cogs), ''],
@@ -6369,7 +6368,6 @@ window.SEED = function () {
   /* El módulo de inventario ya avisa de cada rotura: aquí solo se abre aviso
      propio si además no hay nada comprado y el dinero en juego lo justifica. */
   const MIN_RIESGO = 100;
-  const MAX_AVISOS = 8;
 
   const ESTADOS = [
     ['borrador', 'Borrador', 'mut', 'Todavía no lo has confirmado al proveedor'],
@@ -6534,7 +6532,7 @@ window.SEED = function () {
           if (margen == null || mM < margen) margen = mM;
           if (critica == null || cobM < critica) critica = cobM;
         }
-        mercados.push({ pais: c.pais, estado: estM, recomendado: netoM, cobertura: cobM, enCamino: enCaminoPais });
+        mercados.push({ pais: c.pais, estado: estM, recomendado: netoM, cobertura: cobM, enCamino: enCaminoPais, vel: rp.vel, precio: c.precio });
       });
       /* Lo que va en camino sin país asignado todavía no se ha imputado. */
       neto = Math.max(0, neto - cam.sinDestino);
@@ -7348,43 +7346,47 @@ window.SEED = function () {
        agregado para no tapar la lista con veinte líneas del mismo problema. */
     const enRotura = reposicion().filter((f) => f.estado === 'ROTURA' && !f.enCamino && f.neto > 0)
       .map((f) => {
-        const cob = f.coberturaCritica;
-        const diasSin = (cob != null && isFinite(cob)) ? Math.max(0, f.lead - cob) : 0;
-        return Object.assign({}, f, { riesgo: f.vel * diasSin * f.precio, cob });
+        /* El riesgo es el de los mercados que se quedan sin stock, NO el del SKU
+           entero: un producto con 1.600 unidades en España no pierde miles de
+           euros porque Portugal, que es el 2 % de su venta, se quede a cero. */
+        const rotos = f.mercados.filter((m) => m.estado === 'ROTURA' && m.vel > 0);
+        const riesgo = rotos.reduce((t, m) => {
+          const diasSin = isFinite(m.cobertura) ? Math.max(0, f.lead - m.cobertura) : f.lead;
+          return t + m.vel * diasSin * (m.precio || f.precio);
+        }, 0);
+        const velRota = A.sum(rotos, (m) => m.vel);
+        return Object.assign({}, f, {
+          riesgo, rotos,
+          cuotaRota: f.vel > 0 ? velRota / f.vel : 0,
+          cob: f.coberturaCritica,
+        });
       })
       .sort((a, b) => (b.riesgo - a.riesgo) || (b.costeEstimado - a.costeEstimado));
-    const material = (f) => f.riesgo >= MIN_RIESGO || f.costeEstimado >= MIN_RIESGO;
-    const propias = enRotura.filter(material).slice(0, MAX_AVISOS);
-    const resto = enRotura.filter((f) => propias.indexOf(f) < 0);
-
-    propias.forEach((f) => {
-      const h = 'compras|rotura-sin-pedido|' + f.sku + '|';
+    /* Además del importe, el mercado afectado tiene que pesar algo en la venta
+       del producto; si no, esto se llena de avisos por mercados residuales. */
+    const material = (f) => f.riesgo >= MIN_RIESGO && f.cuotaRota >= 0.10;
+    /* Un solo aviso para todas: el módulo de inventario ya alerta producto a
+       producto de la rotura, así que repetirlo aquí por SKU llenaría la lista
+       con el mismo problema dos veces. Lo que aporta compras es distinto —que
+       nadie ha pedido nada— y eso se dice una vez, con el total. El detalle
+       por referencia está en «Qué hay que pedir». */
+    const sinPedido = enRotura.filter(material);
+    if (sinPedido.length) {
+      const h = 'compras|roturas-sin-pedido||';
       vivos.push(h);
-      const roturas = f.mercados.filter((m) => m.estado === 'ROTURA').map((m) => m.pais);
+      const top = sinPedido.slice(0, 3).map((f) => f.sku).join(', ');
       A.Alertas.push({
-        hash: h, modulo: 'compras', tipo: 'rotura-sin-pedido', prioridad: 'ALTA', sku: f.sku,
-        problema: 'El producto ' + f.sku + ' entra en rotura' +
-          (roturas.length ? ' en ' + roturas.join(', ') : '') + ' y no hay ningún pedido de compra en curso',
-        metrica: F.n(f.stock) + ' uds en total, ' +
-          (f.cob == null ? 'sin ventas recientes' : (isFinite(f.cob) ? F.dias(f.cob) : '∞') + ' de cobertura en el peor mercado') +
-          ' frente a un plazo de entrega de ' + F.dias(f.lead),
-        impacto: f.riesgo > 0 ? f.riesgo : null,
-        recomendacion: 'Lanzar un pedido de ' + F.n(f.neto) + ' uds (' + F.eur(f.costeEstimado, 0) + ' estimados). ' +
-          (f.limite ? 'La fecha límite para no quedarte sin stock era el ' + F.fecha(f.limite) + '.' : ''),
-      });
-    });
-
-    if (resto.length) {
-      const h = 'compras|roturas-sin-pedido-resto||';
-      vivos.push(h);
-      A.Alertas.push({
-        hash: h, modulo: 'compras', tipo: 'roturas-sin-pedido-resto', prioridad: 'MEDIA',
-        problema: 'Otras ' + F.n(resto.length) + ' referencias están en rotura y tampoco tienen pedido de compra en curso',
-        metrica: F.n(A.sum(resto, (f) => f.neto)) + ' uds por pedir · ' +
-          F.eur(A.sum(resto, (f) => f.costeEstimado), 0) + ' estimados',
-        impacto: A.sum(resto, (f) => f.riesgo),
-        recomendacion: 'Están listadas en Compras › Qué hay que pedir, ordenadas por urgencia. ' +
-          'Desde ahí puedes lanzar un único pedido con todas las referencias.',
+        hash: h, modulo: 'compras', tipo: 'roturas-sin-pedido', prioridad: 'ALTA',
+        problema: F.n(sinPedido.length) + (sinPedido.length === 1
+          ? ' referencia entra en rotura y no tiene ningún pedido de compra en curso'
+          : ' referencias entran en rotura y no tienen ningún pedido de compra en curso'),
+        metrica: 'Las de mayor riesgo: ' + top + ' · ' +
+          F.n(A.sum(sinPedido, (f) => f.neto)) + ' uds por pedir · ' +
+          F.eur(A.sum(sinPedido, (f) => f.costeEstimado), 0) + ' estimados',
+        impacto: A.sum(sinPedido, (f) => f.riesgo),
+        recomendacion: 'Están listadas en Compras › Qué hay que pedir, ordenadas por urgencia y con su ' +
+          'fecha límite. Desde ahí se lanza un único pedido con todas las referencias.',
+        accion: 'compras',
       });
     }
 
