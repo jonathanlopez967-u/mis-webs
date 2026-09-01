@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="Informe de optimización de campañas de Amazon Ads — Nafra Home, agosto–septiembre 2026.">
+<meta property="og:title" content="Nafra Home · Informe de optimización PPC">
+<meta property="og:description" content="Registro de cambios campaña por campaña, con el dato que justifica cada movimiento.">
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0}img,svg{display:block;max-width:100%}table{border-collapse:collapse}</style>
+<title>Nafra Home · Informe de optimización PPC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap">
+
+<style>
+:root{
+  --paper:#FAFAF7; --surface:#FFFFFF; --surface-2:#F2F2EC;
+  --ink:#191C18; --ink-2:#464B44; --muted:#767C72;
+  --line:#DEDED5; --line-strong:#C6C7BC;
+  --accent:#3F5F33; --accent-2:#5C7F4B; --accent-soft:#E8EEE3;
+  --bad:#A33A26; --bad-soft:#F7E7E2;
+  --warn:#9A6C14; --warn-soft:#F8EEDA;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#111310; --surface:#181B16; --surface-2:#1F231C;
+    --ink:#ECEEE6; --ink-2:#C1C7BC; --muted:#8C938A;
+    --line:#2B3028; --line-strong:#3D443A;
+    --accent:#9FC486; --accent-2:#B6D3A1; --accent-soft:#21301B;
+    --bad:#E2896E; --bad-soft:#331F19;
+    --warn:#D8AA51; --warn-soft:#322815;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#111310; --surface:#181B16; --surface-2:#1F231C;
+  --ink:#ECEEE6; --ink-2:#C1C7BC; --muted:#8C938A;
+  --line:#2B3028; --line-strong:#3D443A;
+  --accent:#9FC486; --accent-2:#B6D3A1; --accent-soft:#21301B;
+  --bad:#E2896E; --bad-soft:#331F19;
+  --warn:#D8AA51; --warn-soft:#322815;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:"Newsreader",ui-serif,Georgia,serif;font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1140px;margin:0 auto;padding:0 24px 96px}
+
+.masthead{border-bottom:1px solid var(--line-strong);padding:52px 0 26px;
+  display:flex;flex-wrap:wrap;gap:28px;align-items:flex-end;justify-content:space-between}
+.brandline{display:flex;flex-direction:column;gap:10px;min-width:min(100%,440px)}
+.kicker{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--accent);font-weight:600}
+h1{font-family:"Archivo",system-ui,sans-serif;font-weight:800;font-size:clamp(2.2rem,5.4vw,3.4rem);
+  line-height:.99;letter-spacing:-.035em;margin:0;text-wrap:balance}
+h1 em{font-style:normal;color:var(--accent)}
+.dek{margin:0;color:var(--ink-2);max-width:56ch;font-size:1.02rem}
+.meta{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;line-height:1.9;color:var(--muted);text-align:right}
+.meta b{color:var(--ink-2);font-weight:600}
+
+.kpis{display:grid;gap:1px;background:var(--line);grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  border:1px solid var(--line);margin-top:32px;border-radius:3px;overflow:hidden}
+.kpi{background:var(--surface);padding:16px 18px 18px;display:flex;flex-direction:column;gap:3px}
+.kpi .lab{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--muted)}
+.kpi .val{font-family:"Archivo",system-ui,sans-serif;font-weight:700;font-size:1.55rem;letter-spacing:-.025em;
+  font-variant-numeric:tabular-nums;line-height:1.1}
+.kpi .sub{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;color:var(--muted)}
+
+section{padding-top:60px}
+.sechead{display:flex;align-items:baseline;gap:14px;border-bottom:1px solid var(--line-strong);padding-bottom:10px;margin-bottom:24px}
+.sechead .num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11.5px;letter-spacing:.14em;
+  color:var(--accent);font-weight:600;padding-top:4px;white-space:nowrap}
+h2{font-family:"Archivo",system-ui,sans-serif;font-weight:700;font-size:clamp(1.45rem,3.1vw,1.95rem);
+  letter-spacing:-.028em;margin:0;line-height:1.1;text-wrap:balance}
+h3{font-family:"Archivo",system-ui,sans-serif;font-weight:650;font-size:1.04rem;letter-spacing:-.012em;margin:30px 0 12px}
+p{margin:0 0 16px;max-width:68ch}
+.lead{font-size:1.07rem;color:var(--ink-2)}
+strong{font-weight:600;color:var(--ink)}
+code{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.88em;background:var(--surface-2);padding:1px 5px;border-radius:2px}
+
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:3px;background:var(--surface);margin:0 0 20px}
+table{border-collapse:collapse;width:100%;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12.5px}
+th,td{padding:9px 13px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+th{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--surface-2)}
+td:first-child,th:first-child{text-align:left;white-space:normal;min-width:200px}
+td:last-child,th:last-child{text-align:left;white-space:normal;min-width:230px}
+tbody tr:last-child td{border-bottom:none}
+tr.grp td{background:var(--surface-2);font-family:"Archivo",system-ui,sans-serif;font-weight:650;font-size:12.5px;
+  letter-spacing:.01em;color:var(--ink);text-align:left}
+tr.grp td small{font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:400;color:var(--muted);
+  font-size:10.5px;letter-spacing:.06em;margin-left:10px;text-transform:uppercase}
+.up{color:var(--accent);font-weight:600}
+.dn{color:var(--bad);font-weight:600}
+.arw{color:var(--muted);padding:0 4px}
+.why{font-family:"Newsreader",serif;font-size:13.5px;color:var(--ink-2)}
+
+.lev{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:3px;overflow:hidden;margin-bottom:22px}
+.lev>div{background:var(--surface);padding:20px}
+.lev h4{font-family:"Archivo",system-ui,sans-serif;font-size:1rem;font-weight:650;margin:0 0 4px;letter-spacing:-.012em}
+.lev .n{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);font-weight:600;display:block;margin-bottom:8px}
+.lev p{margin:0;font-size:.94rem;color:var(--ink-2);max-width:none}
+.lev .eff{display:block;margin-top:10px;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;
+  color:var(--muted);border-top:1px solid var(--line);padding-top:9px}
+
+.card{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--surface);
+  border-radius:3px;padding:16px 18px;margin-bottom:14px}
+.card.w{border-left-color:var(--warn)}
+.card.b{border-left-color:var(--bad)}
+.card h4{font-family:"Archivo",system-ui,sans-serif;font-size:.98rem;font-weight:650;margin:0 0 6px;letter-spacing:-.01em}
+.card p{margin:0;font-size:.95rem;color:var(--ink-2);max-width:78ch}
+.card p+p{margin-top:8px}
+
+ul.body{padding-left:20px;margin:0 0 18px}
+ul.body li{margin-bottom:9px;color:var(--ink-2);max-width:70ch}
+ul.body li b{color:var(--ink);font-weight:600}
+.note{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11.5px;line-height:1.8;color:var(--muted);
+  border-top:1px solid var(--line);padding-top:14px;margin-top:6px;max-width:82ch}
+@media (max-width:640px){.meta{text-align:left}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header class="masthead">
+  <div class="brandline">
+    <span class="kicker">Registro completo de cambios · 31 ago – 1 sep 2026</span>
+    <h1>Todo lo que<br>se tocó, y<br><em>por qué</em></h1>
+    <p class="dek">Campaña por campaña, con el dato que justifica cada movimiento. Empieza por el bloque 00: el 1 de septiembre la cuenta se dio la vuelta y el stock de gatos se acabó.</p>
+  </div>
+  <div class="meta">
+    <b>Cuenta</b> Nafra Home · FR · ES · IT · DE<br>
+    <b>Base</b> auditoría 1 jun – 30 ago 2026<br><b>Última revisión</b> 1 sep 2026<br>
+    <b>Campañas tocadas</b> 21 de 21 con gasto<br>
+    <b>Todo verificado</b> en pantalla, una por una
+  </div>
+</header>
+
+<div class="kpis">
+  <div class="kpi"><span class="lab">Pujas</span><span class="val">77</span><span class="sub">67 ↑ · 10 ↓</span></div>
+  <div class="kpi"><span class="lab">Negativos</span><span class="val">31</span><span class="sub">29 términos + 2 ASIN</span></div>
+  <div class="kpi"><span class="lab">Presupuestos</span><span class="val">11</span><span class="sub">reasignados a DOGMAT</span></div>
+  <div class="kpi"><span class="lab">Pausados</span><span class="val">7</span><span class="sub">3 campañas de gatos</span></div>
+  <div class="kpi"><span class="lab">Reactivado</span><span class="val">3+3</span><span class="sub">campañas + el ASIN verde</span></div>
+  <div class="kpi"><span class="lab">Campaña nueva</span><span class="val">1</span><span class="sub">defensa de marca</span></div>
+</div>
+
+<section id="giro" style="border:1px solid var(--warn);background:var(--warn-soft);border-radius:4px;padding:4px 28px 28px;margin-top:44px">
+  <div class="sechead"><span class="num">00</span><h2>Giro del 1 de septiembre: se acabó el stock de gatos</h2></div>
+
+  <p class="lead">Todo lo que viene después de este bloque se hizo el 31 de agosto, cuando red de gatos era la línea con stock y DOGMAT la que no lo tenía. <strong>Hoy es exactamente al revés.</strong> Así que la cuenta se ha dado la vuelta.</p>
+
+  <p>El movimiento es simple: se apagan las campañas de gatos con peor ACOS, se frena la mejor para que el stock que queda dure más, y los <b>53 €/día</b> que eso libera se meten en DOGMAT, que sí tiene producto y venía topando presupuesto casi todos los días.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Campaña</th><th>ACOS 90 d</th><th>Pedidos</th><th>Antes</th><th></th><th>Ahora</th><th>Por qué</th></tr></thead>
+      <tbody>
+        <tr class="grp"><td colspan="7">Red de gatos — se recorta</td></tr>
+        <tr><td>RED GATO | FRASE | FR</td><td>20,8 %</td><td>178</td><td>50 €/día</td><td class="arw">→</td><td class="dn">25 €/día</td><td class="why">Es <b>el 78 % de las ventas de gatos</b>, así que no se pausa. Pero es también la que más rápido quema el stock: se deshace la subida del 31/08, que se hizo para escalar y ya no aplica</td></tr>
+        <tr><td>RED GATOS | EXACTA | IT</td><td class="dn">30,9 %</td><td>33</td><td>Activa</td><td class="arw">→</td><td class="dn">Pausada</td><td class="why">La segunda que más gasta de la línea (239 €) y con el ACOS casi al doble de la media de la cuenta</td></tr>
+        <tr><td>RED GATOS | ATAQUE | ES</td><td class="dn">32,6 %</td><td>12</td><td>Activa</td><td class="arw">→</td><td class="dn">Pausada</td><td class="why">El peor ACOS de las que estaban activas</td></tr>
+        <tr><td>RED GATOS | FRASE | IT</td><td>24,2 %</td><td>15</td><td>Activa</td><td class="arw">→</td><td class="dn">Pausada</td><td class="why">Se había reactivado ayer, pero con stock corto no compensa: por encima de la media de la cuenta (21,7 %)</td></tr>
+        <tr class="grp"><td colspan="7">Red de gatos — se mantiene</td></tr>
+        <tr><td>RED GATOS | AUTO | SUSTITUTOS | FR</td><td class="up">9,2 %</td><td>7</td><td>6 €/día</td><td class="arw">→</td><td>igual</td><td class="why">El mejor ACOS de toda la cuenta y gasta muy poco</td></tr>
+        <tr><td>RED GATOS | AMPLIA | FR</td><td class="up">10,8 %</td><td>9</td><td>7,50 €/día</td><td class="arw">→</td><td>igual</td><td class="why">Segundo mejor ACOS, gasto contenido</td></tr>
+        <tr><td>RED GATOS | LEJANA | ES</td><td class="up">15,6 %</td><td>5</td><td>8 €/día</td><td class="arw">→</td><td>igual</td><td class="why">Poco volumen, pero rentable y barata de mantener</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="lead" style="margin-top:32px">Los 53 €/día liberados, repartidos en DOGMAT</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Campaña</th><th>% del día activa</th><th>Antes</th><th></th><th>Ahora</th><th>Por qué</th></tr></thead>
+      <tbody>
+        <tr><td>DOGMAT | AMPLIA | FR</td><td class="dn">98 %</td><td>25 €</td><td class="arw">→</td><td class="up">45 €</td><td class="why">La que más margen tenía: Amazon recomendaba 55–65 €</td></tr>
+        <tr><td>DOGMAT | AUTO | IT</td><td class="dn">59 %</td><td>25 €</td><td class="arw">→</td><td class="up">40 €</td><td class="why">Se quedaba sin presupuesto <b>antes de media tarde</b>, todos los días</td></tr>
+        <tr><td>DOGMAT | AUTO | DE | 12.8</td><td class="dn">92 %</td><td>12 €</td><td class="arw">→</td><td class="up">16 €</td><td class="why">Topaba casi a diario</td></tr>
+        <tr><td>DOGMAT | AUTO | ES</td><td class="dn">94 %</td><td>8 €</td><td class="arw">→</td><td class="up">12 €</td><td class="why">Marcada literalmente «Sin presupuesto» en la consola</td></tr>
+        <tr><td>DOGMAT | AMPLIA | ES</td><td class="dn">93 %</td><td>8 €</td><td class="arw">→</td><td class="up">12 €</td><td class="why">Mismo caso</td></tr>
+        <tr><td>DOGMAT | ATAQUE | ES</td><td class="dn">94 %</td><td>7 €</td><td class="arw">→</td><td class="up">11 €</td><td class="why">Mismo caso</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="note"><b>Un freno deliberado.</b> Estaba previsto subir <code>DOGMAT | AMPLIA | FR</code> hasta 55 €, pero al abrir la celda la consola ya decía que con 45 € solo pierde <b>1–4 € de ventas en siete días</b>. El cuello de botella estaba resuelto; subir más habría sido gastar por gastar. Se quedó en 45 € y esos 10 € fueron a Alemania y España, donde el atasco sí seguía.</p>
+
+  </section>
+
+<section id="logica">
+  <div class="sechead"><span class="num">01</span><h2>La lógica, en tres palancas</h2></div>
+
+  <p class="lead">Todo lo que sigue cae en una de estas tres. Si un cambio no encajaba en ninguna, no se hizo.</p>
+
+  <div class="lev">
+    <div>
+      <span class="n">Palanca 1</span>
+      <h4>Dejar de sangrar</h4>
+      <p>Negativos, pausas y bajadas de puja sobre términos que gastaban sin vender. No cambia el volumen de ventas: solo deja de tirar dinero.</p>
+      <span class="eff">Riesgo bajo · efecto: baja el ACOS</span>
+    </div>
+    <div>
+      <span class="n">Palanca 2</span>
+      <h4>Desatascar</h4>
+      <p>Subir presupuesto donde la propia consola marcaba «Sin presupuesto». No cambia la eficiencia, solo permite que la campaña llegue al final del día.</p>
+      <span class="eff">Riesgo bajo · efecto: más ventas al mismo ACOS</span>
+    </div>
+    <div>
+      <span class="n">Palanca 3</span>
+      <h4>Comprar posición donde ya convierte</h4>
+      <p>Subir pujas solo donde el ROAS estaba por encima de la media de la cuenta <em>y</em> la cuota de impresiones en el top de búsquedas era inferior al 5 %.</p>
+      <span class="eff">Riesgo medio · efecto: más ventas, el ACOS puede subir</span>
+    </div>
+  </div>
+
+  <p>La tercera es la única con riesgo real, y por eso es donde están los frenos del apartado 05. El patrón que las justifica es el mismo en toda la cuenta: <strong>casi todo pujaba muy por debajo de lo que recomienda Amazon</strong> — 0,20 € frente a 0,44–0,83 € — y por eso había palabras con ROAS de 6, 12 y hasta 32 que aparecían arriba menos del 5 % de las veces.</p>
+</section>
+
+<section id="gatos">
+  <div class="sechead"><span class="num">02</span><h2>Red de gatos</h2></div>
+
+  <p class="lead">Se escaló a fondo porque no tenía problema de stock. Es donde están los dos mejores ROAS de la cuenta.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Qué</th><th>Antes</th><th></th><th>Después</th><th>Por qué</th></tr></thead>
+      <tbody>
+        <tr class="grp"><td colspan="5">RED GATO | FRASE | FR <small>la nº 1 en ventas de la cuenta</small></td></tr>
+        <tr><td>Presupuesto diario</td><td>20 €</td><td class="arw">→</td><td class="up">50 €</td><td class="why">Marcada «Sin presupuesto» el 26 % del tiempo. Amazon estimaba <b>2.360–7.090 € de ventas perdidas en una sola semana</b></td></tr>
+        <tr><td><code>filet</code></td><td>0,40 €</td><td class="arw">→</td><td class="up">0,59 €</td><td class="why">ROAS 6,41 y solo 5,26 % de cuota en top</td></tr>
+        <tr><td><code>grillage fenetre chat</code></td><td>0,27 €</td><td class="arw">→</td><td class="up">0,51 €</td><td class="why">ROAS 32,24</td></tr>
+        <tr><td><code>filets de sécurité pour chats</code></td><td>0,40 €</td><td class="arw">→</td><td class="up">0,52 €</td><td class="why">ROAS 7,18</td></tr>
+        <tr><td><code>filet protection chat sans percage</code></td><td>0,42 €</td><td class="arw">→</td><td class="up">0,51 €</td><td class="why">ROAS 5,17</td></tr>
+        <tr><td><code>filet protection chat</code></td><td>0,40 €</td><td class="arw">→</td><td class="dn">0,32 €</td><td class="why">ROAS 2,24 — por debajo de la media</td></tr>
+        <tr><td><code>protection fenetre chat</code></td><td>0,35 €</td><td class="arw">→</td><td class="dn">0,27 €</td><td class="why">ROAS 1,96</td></tr>
+        <tr><td><code>filet chat</code></td><td>0,47 €</td><td class="arw">→</td><td>sin tocar</td><td class="why">Es la de más ventas (1.326 €) pero ROAS 3,83: subirla empeora el ACOS, bajarla cuesta volumen</td></tr>
+        <tr><td>Negativos exactos</td><td>0</td><td class="arw">→</td><td>6</td><td class="why">27 € en 64 días sin un solo pedido</td></tr>
+
+        <tr class="grp"><td colspan="5">RED GATOS | AMPLIA | FR <small>estaba apagada</small></td></tr>
+        <tr><td>Estado</td><td>En pausa</td><td class="arw">→</td><td class="up">Activa</td><td class="why">ACOS 13,2 % — estaba apagada sin motivo</td></tr>
+        <tr><td>Las 30 palabras clave</td><td>0,20 €</td><td class="arw">→</td><td class="up">0,40 €</td><td class="why">Pujaba a menos de la mitad del mínimo recomendado (0,44–0,83 €); por eso no tenía impresiones</td></tr>
+
+        <tr class="grp"><td colspan="5">RED GATOS | FRASE | IT</td></tr>
+        <tr><td>Estado</td><td>En pausa</td><td class="arw">→</td><td class="up">Activa</td><td class="why">ACOS 24,2 %</td></tr>
+        <tr><td>Negativos exactos</td><td>0</td><td class="arw">→</td><td>6</td><td class="why">22 € sin pedidos en 64 días</td></tr>
+
+        <tr class="grp"><td colspan="5">RED GATOS | EXACTA | IT</td></tr>
+        <tr><td><code>rete per gatti rinforzata</code></td><td>Activa</td><td class="arw">→</td><td class="dn">Pausada</td><td class="why">2.601 impresiones, cero pedidos</td></tr>
+        <tr><td><code>rete balcone per gatti</code></td><td>0,39 €</td><td class="arw">→</td><td class="dn">0,30 €</td><td class="why">Se comía el <b>82 % del gasto de su campaña</b> con ROAS 2,65</td></tr>
+        <tr><td><code>zanzariera gatti</code></td><td>0,27 €</td><td class="arw">→</td><td class="up">0,35 €</td><td class="why">ROAS 46,59</td></tr>
+        <tr><td><code>rete gatti</code></td><td>0,32 €</td><td class="arw">→</td><td class="up">0,35 €</td><td class="why">ROAS 4,43</td></tr>
+
+        <tr class="grp"><td colspan="5">RED GATOS | LEJANA | ES</td></tr>
+        <tr><td>Coincidencia lejana</td><td>0,20 €</td><td class="arw">→</td><td class="up">0,40 €</td><td class="why">ACOS 15,6 % y cuota en top por debajo del 5 %</td></tr>
+        <tr><td>Negativos exactos</td><td>0</td><td class="arw">→</td><td>8</td><td class="why">31 € sin pedidos en 64 días</td></tr>
+
+        <tr class="grp"><td colspan="5">RED GATOS | ATAQUE | ES</td></tr>
+        <tr><td>ASIN <code>B0DW8Y32S8</code></td><td>Activo</td><td class="arw">→</td><td class="dn">Pausado</td><td class="why">24 clics, cero pedidos</td></tr>
+        <tr><td>ASIN <code>B0F74NGB7G</code></td><td>0,30 €</td><td class="arw">→</td><td class="dn">0,18 €</td><td class="why">Pujaba un 67 % por encima de lo recomendado</td></tr>
+
+        <tr class="grp"><td colspan="5">RED GATOS | AUTO | SUSTITUTOS | FR</td></tr>
+        <tr><td>Sustitutos</td><td>0,20 €</td><td class="arw">→</td><td class="dn">0,10 €</td><td class="why">Amazon recomienda 0,10 € y ya iba a ROAS 5,70: se pagaba el doble por el mismo tráfico</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="dogmat">
+  <div class="sechead"><span class="num">03</span><h2>DOGMAT</h2></div>
+
+  <p class="lead">Primero se tocó solo para quitar desperdicio, porque había duda de stock. Cuando confirmaste que hay de sobra, se escaló entero. Antes de eso apareció el hallazgo que más pesaba de todo el trabajo.</p>
+
+  <div class="card b">
+    <h4>El ASIN principal estaba apagado en tres campañas</h4>
+    <p>El SKU <code>FBA-001</code>, sin sufijo de color, resultó ser el <b>verde</b> — y es el motor de toda la cuenta: <b>528 de los 533 pedidos</b> de DOGMAT y 15.275 € de ventas en 90 días. Estaba pausado a nivel de anuncio en <code>AUTO | ES</code>, <code>AMPLIA | FR</code> y <code>SUSTITUTOS | FR</code>, resto del apagón por stock del 22 de agosto que no se revirtió. En esas campañas solo corrían el negro y el naranja, dos variantes con 18 y 19 clics de histórico.</p>
+  </div>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Qué</th><th>Antes</th><th></th><th>Después</th><th>Por qué</th></tr></thead>
+      <tbody>
+        <tr class="grp"><td colspan="5">Estructura, en las 7 campañas activas</td></tr>
+        <tr><td>ASIN verde <code>B0F2FN5Z3W</code></td><td>Pausado en 3</td><td class="arw">→</td><td class="up">Activo en las 7</td><td class="why">Es el 92 % de la inversión de DOGMAT</td></tr>
+        <tr><td>Negro y naranja</td><td>Faltaban en 3</td><td class="arw">→</td><td class="up">En las 7</td><td class="why">Cobertura completa de variantes</td></tr>
+
+        <tr class="grp"><td colspan="5">DOGMAT | AMPLIA | FR</td></tr>
+        <tr><td>Presupuesto diario</td><td>13 €</td><td class="arw">→</td><td class="up">25 €</td><td class="why">Se le subieron 7 pujas; con 13 € habría topado en días</td></tr>
+        <tr><td><code>bache chien voiture</code></td><td>0,27 €</td><td class="arw">→</td><td class="up">1,17 €</td><td class="why">ROAS 64,88</td></tr>
+        <tr><td><code>protege siege chien</code></td><td>0,27 €</td><td class="arw">→</td><td class="up">0,94 €</td><td class="why">ROAS 25,86</td></tr>
+        <tr><td><code>couverture chien voiture</code></td><td>0,47 €</td><td class="arw">→</td><td class="up">1,03 €</td><td class="why">ROAS 13,14</td></tr>
+        <tr><td><code>protection banquette arrière chien</code></td><td>0,27 €</td><td class="arw">→</td><td class="up">0,55 €</td><td class="why">ROAS 70,85</td></tr>
+        <tr><td><code>transport chien voiture</code></td><td>0,47 €</td><td class="arw">→</td><td class="up">0,71 €</td><td class="why">ROAS 8,73</td></tr>
+        <tr><td><code>housse voiture chien</code></td><td>0,46 €</td><td class="arw">→</td><td class="up">0,70 €</td><td class="why">ROAS 5,55 — subida parcial, no al recomendado de 1,05 €: mueve 9.591 impresiones</td></tr>
+        <tr><td><code>protection voiture pour chien</code></td><td>0,50 €</td><td class="arw">→</td><td class="up">0,70 €</td><td class="why">ROAS 5,29 — parcial también: 26.423 impresiones</td></tr>
+        <tr><td><code>siege chien voiture</code></td><td>Activa</td><td class="arw">→</td><td class="dn">Pausada</td><td class="why">17 clics sin pedidos y la puja ya en el mínimo</td></tr>
+        <tr><td>Negativos exactos</td><td>0</td><td class="arw">→</td><td>2</td><td class="why">—</td></tr>
+
+        <tr class="grp"><td colspan="5">DOGMAT | AUTO | IT <small>la mayor de DOGMAT</small></td></tr>
+        <tr><td>Presupuesto diario</td><td>15 €</td><td class="arw">→</td><td class="up">25 €</td><td class="why">Se quedaba sin presupuesto el <b>41 % del día</b></td></tr>
+        <tr><td>Coincidencia cercana</td><td>0,24 €</td><td class="arw">→</td><td class="up">0,36 €</td><td class="why">35.820 impresiones, el mayor volumen. <b>Solo esta</b>: la campaña ya topaba y subirlas todas la dejaría sin cobertura</td></tr>
+
+        <tr class="grp"><td colspan="5">DOGMAT | AUTO | ES</td></tr>
+        <tr><td>Ajuste top de búsqueda</td><td>+40 %</td><td class="arw">→</td><td class="dn">0 %</td><td class="why">España es el <b>único</b> mercado donde el top es el peor emplazamiento: ACOS 29 % frente al 20 % de páginas de producto</td></tr>
+        <tr><td>Ajuste páginas de producto</td><td>0 %</td><td class="arw">→</td><td class="up">+30 %</td><td class="why">Es donde España convierte mejor</td></tr>
+        <tr><td>Coincidencia lejana</td><td>0,29 €</td><td class="arw">→</td><td class="up">0,44 €</td><td class="why">ROAS 5,47 con cuota en top bajo el 5 %</td></tr>
+        <tr><td>Negativos exactos</td><td>0</td><td class="arw">→</td><td>5</td><td class="why">25 € sin pedidos en 64 días</td></tr>
+
+        <tr class="grp"><td colspan="5">DOGMAT | EXACTA | FR</td></tr>
+        <tr><td>Presupuesto diario</td><td>13 €</td><td class="arw">→</td><td class="up">20 €</td><td class="why">85 % de tiempo en presupuesto; Amazon recomendaba 20 €</td></tr>
+        <tr><td><code>protection voiture chien</code></td><td>0,35 €</td><td class="arw">→</td><td class="up">0,87 €</td><td class="why">La palabra estrella: 26 pedidos y 804 € en 64 días</td></tr>
+        <tr><td>Otras 14 palabras clave</td><td>0,20–0,50 €</td><td class="arw">→</td><td class="up">recomendada</td><td class="why">Todas pujaban por debajo, con cuota en top &lt;5 %</td></tr>
+        <tr><td><code>housse voiture chien</code></td><td>1,11 €</td><td class="arw">→</td><td class="dn">0,50 €</td><td class="why"><b>Corrección mía</b>: el bloque la subió y su ROAS es 2,68</td></tr>
+        <tr><td><code>tapis chien voiture</code></td><td>1,09 €</td><td class="arw">→</td><td class="dn">0,40 €</td><td class="why"><b>Corrección mía</b>: ROAS 1,54</td></tr>
+
+        <tr class="grp"><td colspan="5">DOGMAT | SUSTITUTOS | FR <small>el mejor ROAS de DOGMAT</small></td></tr>
+        <tr><td>Sustitutos</td><td>0,20 €</td><td class="arw">→</td><td class="up">0,39 €</td><td class="why"><b>ROAS 12,50</b> pujando la mitad de lo recomendado. El caso más claro de toda la cuenta</td></tr>
+        <tr><td>2 ASIN de competencia</td><td>Activos</td><td class="arw">→</td><td class="dn">Excluidos</td><td class="why">Protegen la campaña con mejor ACOS (8,4 %)</td></tr>
+
+        <tr class="grp"><td colspan="5">DOGMAT | AMPLIA | ES</td></tr>
+        <tr><td><code>asiento coche perro</code></td><td>0,40 €</td><td class="arw">→</td><td class="up">0,73 €</td><td class="why">ROAS alto y cuota en top &lt;5 %</td></tr>
+        <tr><td><code>funda asientos perro</code></td><td>0,43 €</td><td class="arw">→</td><td class="up">0,82 €</td><td class="why">ROAS 6,96</td></tr>
+        <tr><td><code>protector asiento coche perro</code></td><td>0,50 €</td><td class="arw">→</td><td class="up">0,70 €</td><td class="why">ROAS 5,04 · 27.208 impresiones</td></tr>
+        <tr><td><code>funda asientos traseros coche</code></td><td>0,50 €</td><td class="arw">→</td><td class="up">0,85 €</td><td class="why">ROAS 4,03</td></tr>
+        <tr><td>Las de ROAS 2,4–3,7</td><td colspan="2"></td><td>sin tocar</td><td class="why">Por debajo de la media de la cuenta: subirlas sería empeorar el ACOS</td></tr>
+
+        <tr class="grp"><td colspan="5">DOGMAT | ATAQUE | ES</td></tr>
+        <tr><td>ASIN <code>B0CM371MZL</code></td><td>Activo</td><td class="arw">→</td><td class="dn">Pausado</td><td class="why">11 clics, cero pedidos</td></tr>
+        <tr><td>2 ASIN más</td><td>0,20 €</td><td class="arw">→</td><td class="up">0,58 € y 0,47 €</td><td class="why">Los dos únicos con margen; los otros 4 ya estaban en su recomendada o con ROAS bajo</td></tr>
+
+        <tr class="grp"><td colspan="5">Alemania</td></tr>
+        <tr><td><code>AUTO | DE | 29.8</code> — 4 grupos auto</td><td>0,24–0,30 €</td><td class="arw">→</td><td class="up">recomendada</td><td class="why">Campaña sin topar presupuesto y ROAS 7,14</td></tr>
+        <tr><td><code>EXACTA DE</code> — presupuesto</td><td>3 €</td><td class="arw">→</td><td class="up">7 €</td><td class="why">98 % de tiempo en presupuesto; Amazon recomendaba 7 €</td></tr>
+        <tr><td><code>AUTO | DE | 12.8</code></td><td colspan="2"></td><td>sin tocar</td><td class="why">Ya estaba exactamente en su puja recomendada</td></tr>
+        <tr><td><code>AMPLIA | DE</code> — estado</td><td>En pausa</td><td class="arw">→</td><td class="up">Activa</td><td class="why">Rentable, aunque floja</td></tr>
+        <tr><td><code>AMPLIA | DE</code> — pujas</td><td colspan="2"></td><td>sin tocar</td><td class="why">ROAS 3,45, la más débil de DOGMAT, y recién reactivada. Primero hay que ver cómo rinde</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="marca">
+  <div class="sechead"><span class="num">04</span><h2>La campaña nueva</h2></div>
+
+  <p class="lead">No existía ninguna campaña de marca, y «nafra home» convertía al 50 % con 4,51 € de gasto en 64 días. Es el tráfico más barato de la cuenta y estaba sin proteger.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Decisión</th><th>Qué se hizo</th><th>Por qué</th></tr></thead>
+      <tbody>
+        <tr><td>Mercado</td><td>Solo Francia</td><td class="why">7 de los 12 pedidos de marca son franceses, y casi todas las variantes largas son de red de gatos</td></tr>
+        <tr><td>Producto</td><td>Un solo ASIN, el de gatos</td><td class="why">Se dejó fuera el de perro para no consumir stock cuando aún estaba en duda</td></tr>
+        <tr><td>Palabras</td><td>4 términos × frase y exacta</td><td class="why">La exacta controla el término principal; la frase captura la cola larga que no se puede enumerar. Amplia habría traído tráfico genérico</td></tr>
+        <tr><td>Estrategia de puja</td><td>Fija, 0,30 €</td><td class="why">Va contra el criterio del resto de la cuenta, y a propósito: con conversión del 50 %, «aumentar y reducir» inflaría el CPC en subastas que ya se ganan a 0,10 €</td></tr>
+        <tr><td>Presupuesto</td><td>5 €/día</td><td class="why">El gasto histórico de marca fue 4,51 € en 64 días: es techo de sobra</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="frenos">
+  <div class="sechead"><span class="num">05</span><h2>Los frenos aplicados</h2></div>
+
+  <p class="lead">Esta es la parte que conviene revisar con más ojo, porque subir pujas es lo único que puede empeorar el ACOS. Estos son los límites que se aplicaron.</p>
+
+  <div class="card">
+    <h4>Solo se subió donde el ROAS ya estaba por encima de la media</h4>
+    <p>La media de la cuenta es 4,60. Ninguna subida se aplicó a una palabra por debajo de eso. En <code>AMPLIA | ES</code> se dejaron sin tocar cuatro palabras con ROAS 2,4–3,7 aunque pujaban muy por debajo de lo recomendado.</p>
+  </div>
+
+  <div class="card w">
+    <h4>En las de mucho volumen, subida parcial</h4>
+    <p>Las dos palabras que mueven 9.591 y 26.423 impresiones en <code>AMPLIA | FR</code> se subieron a 0,70 € y no a los 1,05–1,17 € recomendados. Doblar la puja en las que sostienen el gasto de la campaña es como se pierde el control del ACOS en una semana.</p>
+  </div>
+
+  <div class="card w">
+    <h4>En la campaña que topaba presupuesto, una sola puja</h4>
+    <p><code>AUTO | IT</code> estaba al 59 % de tiempo en presupuesto. Subir todas las pujas allí solo habría hecho que se gastara el dinero antes y cubriera menos horas del día. Primero el presupuesto (15 → 25 €), y de pujas solo la de más volumen.</p>
+  </div>
+
+  <div class="card b">
+    <h4>Una corrección posterior</h4>
+    <p>Al aplicar las pujas sugeridas <em>en bloque</em> en <code>EXACTA | FR</code>, Amazon subió también dos palabras malas. Se corrigieron: <code>housse voiture chien</code> de 1,11 a 0,50 € (ROAS 2,68) y <code>tapis chien voiture</code> de 1,09 a 0,40 € (ROAS 1,54). Lección: la acción en bloque no distingue buenas de malas.</p>
+  </div>
+
+  <div class="card">
+    <h4>Y dos cosas que se decidió no hacer</h4>
+    <p><code>RED GATOS | AUTO | SUSTITUTOS | FR</code> tiene ROAS 5,70, pero su puja ya estaba al doble de lo recomendado: ahí se <b>bajó</b> en vez de subir. Y <code>DOGMAT | EXACTA | FR | 24.6</code> se dejó pausada pese a que un dato de 90 días la hacía parecer rentable — mirando solo julio y agosto tiene 34 clics y <b>cero compras</b>.</p>
+  </div>
+</section>
+
+<section id="sintocar">
+  <div class="sechead"><span class="num">06</span><h2>Lo que no se tocó</h2></div>
+  <ul class="body">
+    <li><b>ORGANIZADOR, entero.</b> Ni activar, ni negativos, ni pujas.</li>
+    <li><b><code>RED GATOS | AUTO | ES</code> y <code>AUTO | DE</code>.</b> ACOS 39,7 % y 66,8 %. Estaban pausadas y así siguen.</li>
+    <li><b>ASIN <code>B0FH59ZK4J</code></b> en <code>RED GATOS | ATAQUE | ES</code>: ACOS 49 %, pero convierte y su puja ya está en el mínimo de 0,10 €. En observación.</li>
+    <li><b>Las campañas antiguas sin gasto reciente</b> (RED GATOS EXACTA 2.6, AMPLIA 2, MANUAL…). Reactivar sin datos no es optimizar, es apostar.</li>
+  </ul>
+
+  
+  <p class="note">Cifras de la auditoría base (1 jun – 30 ago 2026): 5.150 € de inversión, 23.714 € de ventas, ACOS 21,7 %, ROAS 4,60, 902 pedidos. Las ventas son «totales de 7 días», así que los próximos días saldrán con el ACOS inflado por la ventana de atribución — conviene no juzgar nada antes de una semana completa.</p>
+</section>
+
+</div>
+
+<footer style="max-width:1140px;margin:0 auto;padding:36px 24px 72px;border-top:1px solid var(--line-strong);
+  font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11.5px;letter-spacing:.06em;color:var(--muted);
+  display:flex;flex-wrap:wrap;gap:10px 28px;justify-content:space-between">
+  <span>Nafra Home · Amazon Ads FR · ES · IT · DE</span>
+  <span>Informe interno — documento confidencial</span>
+</footer>
+</body>
+</html>
