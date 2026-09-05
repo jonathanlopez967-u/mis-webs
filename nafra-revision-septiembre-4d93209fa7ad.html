@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Nafra Home | Revision de rendimiento PPC | Septiembre 2026</title>
+<meta name="description" content="Analisis de la subida de coste por clic del 31 de agosto y correcciones aplicadas. Nafra Home, Amazon Ads.">
+<meta property="og:title" content="Nafra Home | Revision de rendimiento PPC">
+<meta property="og:description" content="Que paso estos cinco dias, por que, y que se ha corregido.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap">
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0}img,svg{display:block;max-width:100%}table{border-collapse:collapse}</style>
+
+<style>
+:root{
+  --paper:#FAFAF7; --surface:#FFFFFF; --surface-2:#F2F2EC;
+  --ink:#191C18; --ink-2:#464B44; --muted:#767C72;
+  --line:#DEDED5; --line-strong:#C6C7BC;
+  --accent:#3F5F33; --accent-2:#5C7F4B; --accent-soft:#E8EEE3;
+  --bad:#A33A26; --bad-soft:#F7E7E2;
+  --warn:#9A6C14; --warn-soft:#F8EEDA;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#111310; --surface:#181B16; --surface-2:#1F231C;
+    --ink:#ECEEE6; --ink-2:#C1C7BC; --muted:#8C938A;
+    --line:#2B3028; --line-strong:#3D443A;
+    --accent:#9FC486; --accent-2:#B6D3A1; --accent-soft:#21301B;
+    --bad:#E2896E; --bad-soft:#331F19;
+    --warn:#D8AA51; --warn-soft:#322815;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#111310; --surface:#181B16; --surface-2:#1F231C;
+  --ink:#ECEEE6; --ink-2:#C1C7BC; --muted:#8C938A;
+  --line:#2B3028; --line-strong:#3D443A;
+  --accent:#9FC486; --accent-2:#B6D3A1; --accent-soft:#21301B;
+  --bad:#E2896E; --bad-soft:#331F19;
+  --warn:#D8AA51; --warn-soft:#322815;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:"Newsreader",ui-serif,Georgia,serif;font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1140px;margin:0 auto;padding:0 24px 96px}
+
+.masthead{border-bottom:1px solid var(--line-strong);padding:52px 0 26px;
+  display:flex;flex-wrap:wrap;gap:28px;align-items:flex-end;justify-content:space-between}
+.brandline{display:flex;flex-direction:column;gap:10px;min-width:min(100%,440px)}
+.kicker{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--accent);font-weight:600}
+h1{font-family:"Archivo",system-ui,sans-serif;font-weight:800;font-size:clamp(2.2rem,5.4vw,3.4rem);
+  line-height:.99;letter-spacing:-.035em;margin:0;text-wrap:balance}
+h1 em{font-style:normal;color:var(--accent)}
+.dek{margin:0;color:var(--ink-2);max-width:56ch;font-size:1.02rem}
+.meta{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;line-height:1.9;color:var(--muted);text-align:right}
+.meta b{color:var(--ink-2);font-weight:600}
+
+.kpis{display:grid;gap:1px;background:var(--line);grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  border:1px solid var(--line);margin-top:32px;border-radius:3px;overflow:hidden}
+.kpi{background:var(--surface);padding:16px 18px 18px;display:flex;flex-direction:column;gap:3px}
+.kpi .lab{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--muted)}
+.kpi .val{font-family:"Archivo",system-ui,sans-serif;font-weight:700;font-size:1.55rem;letter-spacing:-.025em;
+  font-variant-numeric:tabular-nums;line-height:1.1}
+.kpi .sub{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;color:var(--muted)}
+
+section{padding-top:60px}
+.sechead{display:flex;align-items:baseline;gap:14px;border-bottom:1px solid var(--line-strong);padding-bottom:10px;margin-bottom:24px}
+.sechead .num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11.5px;letter-spacing:.14em;
+  color:var(--accent);font-weight:600;padding-top:4px;white-space:nowrap}
+h2{font-family:"Archivo",system-ui,sans-serif;font-weight:700;font-size:clamp(1.45rem,3.1vw,1.95rem);
+  letter-spacing:-.028em;margin:0;line-height:1.1;text-wrap:balance}
+h3{font-family:"Archivo",system-ui,sans-serif;font-weight:650;font-size:1.04rem;letter-spacing:-.012em;margin:30px 0 12px}
+p{margin:0 0 16px;max-width:68ch}
+.lead{font-size:1.07rem;color:var(--ink-2)}
+strong{font-weight:600;color:var(--ink)}
+code{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.88em;background:var(--surface-2);padding:1px 5px;border-radius:2px}
+
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:3px;background:var(--surface);margin:0 0 20px}
+table{border-collapse:collapse;width:100%;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12.5px}
+th,td{padding:9px 13px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+th{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--surface-2)}
+td:first-child,th:first-child{text-align:left;white-space:normal;min-width:200px}
+td:last-child,th:last-child{text-align:left;white-space:normal;min-width:230px}
+tbody tr:last-child td{border-bottom:none}
+tr.grp td{background:var(--surface-2);font-family:"Archivo",system-ui,sans-serif;font-weight:650;font-size:12.5px;
+  letter-spacing:.01em;color:var(--ink);text-align:left}
+tr.grp td small{font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:400;color:var(--muted);
+  font-size:10.5px;letter-spacing:.06em;margin-left:10px;text-transform:uppercase}
+.up{color:var(--accent);font-weight:600}
+.dn{color:var(--bad);font-weight:600}
+.arw{color:var(--muted);padding:0 4px}
+.why{font-family:"Newsreader",serif;font-size:13.5px;color:var(--ink-2)}
+
+.lev{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:3px;overflow:hidden;margin-bottom:22px}
+.lev>div{background:var(--surface);padding:20px}
+.lev h4{font-family:"Archivo",system-ui,sans-serif;font-size:1rem;font-weight:650;margin:0 0 4px;letter-spacing:-.012em}
+.lev .n{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);font-weight:600;display:block;margin-bottom:8px}
+.lev p{margin:0;font-size:.94rem;color:var(--ink-2);max-width:none}
+.lev .eff{display:block;margin-top:10px;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;
+  color:var(--muted);border-top:1px solid var(--line);padding-top:9px}
+
+.card{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--surface);
+  border-radius:3px;padding:16px 18px;margin-bottom:14px}
+.card.w{border-left-color:var(--warn)}
+.card.b{border-left-color:var(--bad)}
+.card h4{font-family:"Archivo",system-ui,sans-serif;font-size:.98rem;font-weight:650;margin:0 0 6px;letter-spacing:-.01em}
+.card p{margin:0;font-size:.95rem;color:var(--ink-2);max-width:78ch}
+.card p+p{margin-top:8px}
+
+ul.body{padding-left:20px;margin:0 0 18px}
+ul.body li{margin-bottom:9px;color:var(--ink-2);max-width:70ch}
+ul.body li b{color:var(--ink);font-weight:600}
+.note{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11.5px;line-height:1.8;color:var(--muted);
+  border-top:1px solid var(--line);padding-top:14px;margin-top:6px;max-width:82ch}
+@media (max-width:640px){.meta{text-align:left}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <div class="brandline">
+    <span class="kicker">Revisión de rendimiento · 31 agosto – 5 septiembre 2026</span>
+    <h1>El coste por clic<br>subió un <em>53 %</em><br>en una semana</h1>
+    <p class="dek">Las ventas y la conversión siguen sanas. Lo que se rompió fue el precio que se estaba pagando por cada visita. Localizado, con fecha exacta, y ya corregido.</p>
+  </div>
+  <div class="meta">
+    <b>Cuenta</b> Nafra Home<br>
+    <b>Mercados</b> Francia · España · Italia · Alemania<br>
+    <b>Base de análisis</b> 90 días de datos diarios<br>
+    <b>Correcciones aplicadas</b> 5 septiembre
+  </div>
+</header>
+
+<div class="kpis">
+  <div class="kpi"><span class="lab">Coste por clic</span><span class="val dn">0,75 €</span><span class="sub">venía de 0,49 €</span></div>
+  <div class="kpi"><span class="lab">ACOS</span><span class="val dn">25,8 %</span><span class="sub">venía de 15,9 %</span></div>
+  <div class="kpi"><span class="lab">Conversión</span><span class="val up">9,9 %</span><span class="sub">estable · sin deterioro</span></div>
+  <div class="kpi"><span class="lab">Sobrecoste</span><span class="val">278 €</span><span class="sub">en 6 días</span></div>
+  <div class="kpi"><span class="lab">Ajustes hechos</span><span class="val">130</span><span class="sub">pujas corregidas</span></div>
+  <div class="kpi"><span class="lab">Ahorro estimado</span><span class="val up">~46 €</span><span class="sub">al día</span></div>
+</div>
+
+<section id="que">
+  <div class="sechead"><span class="num">01</span><h2>Qué pasó exactamente</h2></div>
+
+  <p class="lead">El 31 de agosto se aplicó a la cuenta la subida de pujas que Amazon recomienda para ganar visibilidad. El efecto sobre el coste fue inmediato y mucho mayor de lo previsto.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Día</th><th>Coste por clic</th><th>ACOS</th><th>Conversión</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>26 agosto</td><td>0,45 €</td><td>11,7 %</td><td>13,0 %</td><td class="why">Normalidad</td></tr>
+        <tr><td>28 agosto</td><td>0,48 €</td><td>11,8 %</td><td>14,3 %</td><td class="why">Normalidad</td></tr>
+        <tr><td>29 agosto</td><td>0,46 €</td><td>7,1 %</td><td>17,4 %</td><td class="why">Normalidad</td></tr>
+        <tr><td>30 agosto</td><td>0,53 €</td><td>12,8 %</td><td>14,7 %</td><td class="why">Normalidad</td></tr>
+        <tr class="grp"><td colspan="5">31 de agosto · se aplican las nuevas pujas</td></tr>
+        <tr><td>31 agosto</td><td class="dn">0,63 €</td><td>20,8 %</td><td>10,5 %</td><td class="why">Primer salto</td></tr>
+        <tr><td>1 septiembre</td><td class="dn">0,77 €</td><td>18,9 %</td><td>13,7 %</td><td class="why">El coste se estabiliza en el nivel alto</td></tr>
+        <tr><td>2 septiembre</td><td class="dn">0,78 €</td><td>27,0 %</td><td>10,0 %</td><td class="why"></td></tr>
+        <tr><td>3 septiembre</td><td class="dn">0,77 €</td><td>22,9 %</td><td>11,0 %</td><td class="why"></td></tr>
+        <tr><td>4 septiembre</td><td class="dn">0,75 €</td><td>39,8 %</td><td>6,6 %</td><td class="why">Cifras aún incompletas</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Durante todo agosto el coste por clic se había mantenido plano entre <b>0,45 € y 0,53 €</b>. Desde el 31 de agosto se instaló entre <b>0,75 € y 0,81 €</b>. No es una deriva progresiva: es un escalón en una fecha concreta.</p>
+</section>
+
+<section id="clave">
+  <div class="sechead"><span class="num">02</span><h2>El dato que orienta el diagnóstico</h2></div>
+
+  <p class="lead">Cuando una cuenta empeora, hay dos explicaciones posibles: o el producto ha dejado de convencer, o se está pagando de más por llegar a la gente. Los números descartan la primera.</p>
+
+  <div class="lev">
+    <div>
+      <span class="n">Se mantiene</span>
+      <h4>La conversión</h4>
+      <p>De cada 100 personas que hacen clic, siguen comprando prácticamente las mismas: 9,9 % ahora frente al 10,7 % de referencia. El anuncio y la ficha siguen funcionando.</p>
+      <span class="eff">Sin deterioro apreciable</span>
+    </div>
+    <div>
+      <span class="n">Se mantiene</span>
+      <h4>El volumen de pedidos</h4>
+      <p>105 pedidos en la semana del 31 de agosto, frente a 102 y 103 de las dos mejores semanas de agosto. La demanda no ha caído.</p>
+      <span class="eff">En línea con el mejor mes</span>
+    </div>
+    <div>
+      <span class="n">Se dispara</span>
+      <h4>El precio de cada clic</h4>
+      <p>Es la única variable que se sale de su rango histórico. Y al multiplicarse por el mismo número de visitas, arrastra el ACOS y el TACOS hacia arriba.</p>
+      <span class="eff">+53 % sobre el nivel de agosto</span>
+    </div>
+  </div>
+
+  <p><strong>La cuenta pagó 796 € por 1.057 clics.</strong> A los precios de agosto esos mismos clics habrían costado 518 €. La diferencia —278 € en seis días— es exactamente el deterioro del ACOS: con el coste anterior habría quedado en 16,8 %, en línea con el 15,9 % de referencia.</p>
+
+  <p class="note"><b>Una parte del encarecimiento es del mercado.</b> En la otra línea de producto, donde no se tocaron las pujas, el coste por clic también subió: de 0,43 € a 0,56 €, un 30 %. Es la presión competitiva habitual al acercarse el último trimestre del año. Pero la inflación del mercado es gradual; el salto de un solo día no lo es.</p>
+</section>
+
+<section id="paises">
+  <div class="sechead"><span class="num">03</span><h2>El efecto por mercado</h2></div>
+
+  <p class="lead">El encarecimiento alcanzó a los cuatro países. Francia e Italia son los que peor lo acusan.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Mercado</th><th>CPC antes</th><th></th><th>CPC después</th><th>Lectura</th></tr></thead>
+      <tbody>
+        <tr><td>Italia</td><td>0,46 €</td><td class="arw">→</td><td class="dn">0,78 €</td><td class="why">El mayor encarecimiento: +70 %</td></tr>
+        <tr><td>Francia</td><td>0,52 €</td><td class="arw">→</td><td class="dn">0,83 €</td><td class="why">+60 %, y es el mercado de más volumen</td></tr>
+        <tr><td>Alemania</td><td>0,49 €</td><td class="arw">→</td><td class="dn">0,76 €</td><td class="why">+55 %, pero aquí la conversión incluso mejoró (14,3 %)</td></tr>
+        <tr><td>España</td><td>0,48 €</td><td class="arw">→</td><td class="dn">0,66 €</td><td class="why">+38 %, el menos afectado</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>En la línea de red para gatos, Francia e Italia acusan además el final de temporada: es un producto de balcón y ventana cuya demanda cae de forma natural en septiembre. La combinación de clics más caros y menos intención de compra llevó esas campañas por encima del umbral de rentabilidad, y ahí se ha intervenido.</p>
+</section>
+
+<section id="hecho">
+  <div class="sechead"><span class="num">04</span><h2>Qué se ha corregido</h2></div>
+
+  <div class="card">
+    <h4>Las pujas, devueltas a su nivel anterior</h4>
+    <p>Reducción del <b>30 % en 130 objetivos</b> de las ocho campañas afectadas, en los cuatro países. Devuelve el coste por clic a la franja de 0,52 € en la que la cuenta llevaba operando todo el año.</p>
+  </div>
+
+  <div class="card w">
+    <h4>Tres campañas detenidas</h4>
+    <p>Las que habían caído por debajo del umbral de rentabilidad —el punto en que cada venta deja de compensar lo que cuesta conseguirla, situado en un retorno de 3,3—. Se han pausado, no eliminado: vuelven a activarse cuando las condiciones lo justifiquen.</p>
+  </div>
+
+  <div class="card w">
+    <h4>Un presupuesto recortado</h4>
+    <p>La campaña de mayor gasto de la línea de gatos pasa de 20 € a 8 € diarios mientras dure la caída estacional, para no financiar clics que ahora rinden menos.</p>
+  </div>
+
+  <div class="card">
+    <h4>Lo que no se ha tocado</h4>
+    <p>Las campañas que siguen rindiendo por encima de la media —entre ellas dos que están devolviendo 5,5 y 8,5 € por cada euro— se mantienen intactas. La corrección se ha limitado a lo que estaba perdiendo dinero.</p>
+  </div>
+</section>
+
+<section id="ahora">
+  <div class="sechead"><span class="num">05</span><h2>Qué esperar ahora</h2></div>
+  <ul class="body">
+    <li><b>El coste por clic debería volver a ~0,52 €</b> en 48-72 horas. Es un cambio que Amazon aplica en la siguiente subasta, pero los promedios tardan unos días en reflejarlo.</li>
+    <li><b>El ACOS debería regresar a la franja del 17-18 %</b> una vez el coste se normalice, manteniendo el volumen de pedidos actual.</li>
+    <li><b>El ahorro estimado ronda los 46 € diarios</b> en la línea principal, más lo liberado por las campañas detenidas.</li>
+    <li><b>Conviene no juzgar el efecto antes de cinco días.</b> Amazon atribuye las ventas hasta siete días después del clic, así que las cifras más recientes siempre aparecen peores de lo que acaban siendo.</li>
+    <li><b>Las subidas de puja se harán de una en una a partir de ahora.</b> Una campaña, una semana de medición, y solo entonces extender al resto. Aplicarlas a la vez en toda la cuenta es lo que impidió detectar el sobrecoste antes de que se acumulara.</li>
+  </ul>
+
+  <p class="note"><b>Sobre el origen del problema.</b> La subida de pujas del 31 de agosto se aplicó siguiendo la recomendación automática de Amazon, que optimiza para ganar visibilidad y no para proteger el margen. Fue un error de criterio al aplicarla de forma simultánea en toda la cuenta en lugar de por fases. Está identificado, revertido, y el procedimiento cambiado para que no se repita.</p>
+</section>
+
+</div>
+
+<footer style="max-width:1140px;margin:0 auto;padding:36px 24px 72px;border-top:1px solid var(--line-strong);font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11.5px;letter-spacing:.06em;color:var(--muted);display:flex;flex-wrap:wrap;gap:10px 28px;justify-content:space-between">
+  <span>Nafra Home · Amazon Ads FR · ES · IT · DE</span>
+  <span>Revisión de 5 septiembre 2026 · documento confidencial</span>
+</footer>
+</body>
+</html>
