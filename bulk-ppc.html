@@ -1,0 +1,793 @@
+<meta charset="utf-8">
+<title>Bulk PPC Amazon</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#EEF1F4; --surface:#FFFFFF; --surface-2:#F6F8FA; --line:#D8DEE4; --line-strong:#B8C1CA;
+  --ink:#151A1F; --ink-2:#3B454F; --muted:#697683; --faint:#9AA5AF;
+  --accent:#C8281A; --accent-ink:#FFFFFF; --accent-soft:#FBE4E1;
+  --up:#1F7A48; --up-bg:#E1F2E8; --down:#A86A12; --down-bg:#FBEFD6; --stop:#BE3A2B; --stop-bg:#FBE3DF;
+  --new:#2456C4; --new-bg:#E2EAFA; --place:#6B46C1; --place-bg:#ECE6F8; --info:#4A5560; --info-bg:#E8ECF0;
+  --focus:#2456C4; --grid:rgba(21,26,31,.055);
+  --shadow:0 1px 2px rgba(21,26,31,.06),0 10px 28px -14px rgba(21,26,31,.25);
+  --r:8px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#111417; --surface:#191E23; --surface-2:#1F252B; --line:#2B333B; --line-strong:#3B4550;
+    --ink:#E9EDF1; --ink-2:#C4CCD4; --muted:#8F9BA7; --faint:#66727E;
+    --accent:#E24A3C; --accent-ink:#FFFFFF; --accent-soft:#3A1A16;
+    --up:#5CC98A; --up-bg:#16301F; --down:#E0A93F; --down-bg:#33270F; --stop:#F0776A; --stop-bg:#3A1A16;
+    --new:#7FA4F5; --new-bg:#16233D; --place:#B69CF0; --place-bg:#26193F; --info:#B0BAC4; --info-bg:#252B31;
+    --focus:#7FA4F5; --grid:rgba(233,237,241,.06);
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -14px rgba(0,0,0,.6);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111417; --surface:#191E23; --surface-2:#1F252B; --line:#2B333B; --line-strong:#3B4550;
+  --ink:#E9EDF1; --ink-2:#C4CCD4; --muted:#8F9BA7; --faint:#66727E;
+  --accent:#E24A3C; --accent-ink:#FFFFFF; --accent-soft:#3A1A16;
+  --up:#5CC98A; --up-bg:#16301F; --down:#E0A93F; --down-bg:#33270F; --stop:#F0776A; --stop-bg:#3A1A16;
+  --new:#7FA4F5; --new-bg:#16233D; --place:#B69CF0; --place-bg:#26193F; --info:#B0BAC4; --info-bg:#252B31;
+  --focus:#7FA4F5; --grid:rgba(233,237,241,.06);
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -14px rgba(0,0,0,.6);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;padding:0}
+img{max-width:100%}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;padding-bottom:84px}
+h1,h2,h3{margin:0;font-family:"Barlow Condensed","Arial Narrow",Arial,sans-serif;font-weight:700;letter-spacing:.01em;text-wrap:balance}
+h2{font-size:22px;line-height:1.1}
+h3{font-size:18px;line-height:1.15}
+p{margin:0}
+button{font:inherit;color:inherit}
+.mono{font-family:"IBM Plex Mono","Cascadia Mono",Consolas,monospace;font-size:12.5px}
+.num{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+a{color:var(--new)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+/* header */
+.top{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--line);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:24px 24px;background-position:-1px -1px}
+.top-in{max-width:1440px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:12px}
+.brand .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.brand h1{font-size:30px;line-height:1;font-weight:700}
+.brand h1 span{color:var(--accent)}
+.filechip{display:flex;align-items:center;gap:10px;padding:6px 10px 6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface-2);font-size:12.5px;max-width:520px}
+.filechip b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
+.filechip .dot{width:8px;height:8px;border-radius:50%;background:var(--up);flex:none}
+.filechip.example .dot{background:var(--down)}
+.spacer{flex:1}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:var(--r);border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);cursor:pointer;font-weight:500;font-size:13.5px;line-height:1.2;white-space:nowrap}
+.btn:hover{background:var(--surface-2)}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.ink{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.btn.sm{padding:5px 10px;font-size:12.5px}
+.btn.link{border:none;background:none;padding:2px 4px;color:var(--new);font-weight:500}
+/* main */
+.wrap{max-width:1440px;margin:0 auto;padding:18px 24px}
+.banner{display:flex;gap:16px;align-items:flex-start;padding:14px 16px;border:1px dashed var(--line-strong);border-radius:var(--r);background:var(--surface);margin-bottom:16px}
+.banner .tag{flex:none;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--down);background:var(--down-bg);padding:4px 8px;border-radius:4px;margin-top:2px}
+.banner ol{margin:6px 0 0;padding-left:18px;color:var(--ink-2)}
+.banner li{margin:2px 0}
+.drop{border:2px dashed var(--line-strong);border-radius:var(--r);padding:22px;text-align:center;background:var(--surface);color:var(--muted);transition:border-color .15s,background .15s}
+.drop.over{border-color:var(--new);background:var(--new-bg);color:var(--ink)}
+body.dragging .drop-overlay{display:flex}
+.drop-overlay{display:none;position:fixed;inset:0;z-index:50;background:rgba(36,86,196,.12);backdrop-filter:blur(2px);align-items:center;justify-content:center;font-size:22px;font-weight:600;color:var(--ink);pointer-events:none}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 16px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;min-height:74px;display:flex;flex-direction:column;gap:2px}
+.kpi .l{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.kpi .v{font-family:"Barlow Condensed",sans-serif;font-size:28px;font-weight:600;line-height:1.05;font-variant-numeric:tabular-nums}
+.kpi .s{font-size:12px;color:var(--muted)}
+.kpi.good .v{color:var(--up)} .kpi.bad .v{color:var(--stop)} .kpi.warn .v{color:var(--down)}
+.props{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}
+.chip{display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border-radius:999px;font-size:12.5px;font-weight:600;border:1px solid transparent;cursor:pointer;background:var(--surface);border-color:var(--line)}
+.chip b{font-family:"IBM Plex Mono",monospace;font-weight:500}
+.chip.subir{color:var(--up);background:var(--up-bg)} .chip.bajar{color:var(--down);background:var(--down-bg)}
+.chip.pausar{color:var(--stop);background:var(--stop-bg)} .chip.negativo{color:var(--stop);background:var(--stop-bg)}
+.chip.cosecha{color:var(--new);background:var(--new-bg)} .chip.emplazamiento{color:var(--place);background:var(--place-bg)}
+.chip.campana{color:var(--info);background:var(--info-bg)} .chip.vigilar{color:var(--info);background:var(--info-bg)}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:14px;overflow-x:auto}
+.tab{padding:10px 14px;border:none;background:none;cursor:pointer;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tab .n{font-family:"IBM Plex Mono",monospace;font-size:11.5px;margin-left:6px;color:var(--faint)}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.toolbar input[type=search],.toolbar select,.field input,.field select{font:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--line-strong);border-radius:6px;background:var(--surface);color:var(--ink)}
+.toolbar input[type=search]{min-width:240px}
+.section{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);margin-bottom:14px;overflow:hidden}
+.section-h{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--surface-2)}
+.section-h h3{flex:1}
+.section-h .cnt{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted)}
+.section-h .stripe{width:4px;height:22px;border-radius:2px;background:var(--info)}
+.section.subir .stripe{background:var(--up)} .section.bajar .stripe{background:var(--down)} .section.pausar .stripe{background:var(--stop)}
+.section.negativo .stripe{background:var(--stop)} .section.cosecha .stripe{background:var(--new)} .section.emplazamiento .stripe{background:var(--place)}
+.section.vigilar .stripe{background:var(--info)} .section.campana .stripe{background:var(--info)}
+.tblwrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--surface)}
+td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:none}
+td.r,th.r{text-align:right}
+td .el{font-family:"IBM Plex Mono",monospace;font-size:12.5px;word-break:break-word}
+td .sub{display:block;font-size:11.5px;color:var(--muted);margin-top:1px}
+td .camp{font-size:12.5px;color:var(--ink-2);word-break:break-word}
+td .camp .g{color:var(--muted)}
+td.motivo{color:var(--ink-2);min-width:260px;max-width:460px}
+td .note{display:block;margin-top:3px;font-size:12px;color:var(--new)}
+td .note.warn{color:var(--down)}
+tr.off td{opacity:.5}
+tr.off td:first-child{opacity:1}
+.m{font-family:"IBM Plex Mono",monospace;font-size:12px;white-space:nowrap;color:var(--ink-2)}
+.m b{font-weight:500;color:var(--ink)}
+.arrow{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+.arrow input{width:74px;font:inherit;padding:4px 6px;border:1px solid var(--line-strong);border-radius:5px;background:var(--surface);color:var(--ink);text-align:right}
+.arrow .to{color:var(--faint)}
+.pill{display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.pill.subir{color:var(--up);background:var(--up-bg)} .pill.bajar{color:var(--down);background:var(--down-bg)}
+.pill.pausar,.pill.negativo{color:var(--stop);background:var(--stop-bg)} .pill.cosecha{color:var(--new);background:var(--new-bg)}
+.pill.emplazamiento{color:var(--place);background:var(--place-bg)} .pill.vigilar,.pill.campana,.pill.info{color:var(--info);background:var(--info-bg)}
+.pill.ok{color:var(--up);background:var(--up-bg)} .pill.warn{color:var(--down);background:var(--down-bg)} .pill.bad{color:var(--stop);background:var(--stop-bg)}
+.conf{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--faint);margin-left:6px;vertical-align:middle}
+.conf.alta{background:var(--up)}
+.country{font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:500;padding:1px 6px;border:1px solid var(--line-strong);border-radius:4px;white-space:nowrap}
+input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;margin:2px 0 0}
+.empty{padding:26px 14px;color:var(--muted);text-align:center}
+.grid2{display:grid;grid-template-columns:1.2fr 1fr;gap:14px;align-items:start}
+@media (max-width:980px){.grid2{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.card h3{margin-bottom:8px}
+.claude{border-color:var(--line-strong);box-shadow:var(--shadow)}
+.claude textarea{width:100%;font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line-strong);border-radius:6px;background:var(--surface);color:var(--ink);resize:vertical;min-height:52px}
+.claude .out{white-space:pre-wrap;font-size:13.5px;line-height:1.5;color:var(--ink-2);margin-top:10px;padding:10px 12px;background:var(--surface-2);border-radius:6px;max-width:72ch}
+.claude .status{font-size:12px;color:var(--muted);margin-top:8px}
+.claude .row{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap}
+/* footer */
+.foot{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -8px 24px -18px rgba(0,0,0,.5)}
+.foot-in{max-width:1440px;margin:0 auto;padding:10px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.foot .sum{font-size:13px;color:var(--ink-2)}
+.foot .sum b{font-family:"Barlow Condensed",sans-serif;font-size:22px;font-weight:600;margin-right:4px;vertical-align:-2px}
+/* drawer */
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(420px,100%);background:var(--surface);border-left:1px solid var(--line);z-index:60;transform:translateX(100%);transition:transform .2s;overflow-y:auto;padding:18px 20px 90px;box-shadow:var(--shadow)}
+.drawer.open{transform:none}
+@media (prefers-reduced-motion:reduce){.drawer{transition:none}}
+.drawer h2{margin-bottom:6px}
+.drawer .hint{font-size:12.5px;color:var(--muted);margin-bottom:14px}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11.5px;color:var(--muted);font-weight:500}
+.field.wide{grid-column:1/-1}
+.field input{width:100%}
+.fields h3{grid-column:1/-1;margin-top:10px;font-size:15px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+.paises{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;grid-column:1/-1}
+.paises .field input{text-align:right}
+.drawer .actions{display:flex;gap:10px;margin-top:16px}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:55;display:none}
+.scrim.open{display:block}
+.toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:6px;font-size:13px;z-index:70;opacity:0;transition:opacity .15s;pointer-events:none;max-width:90vw}
+.toast.show{opacity:1}
+.small{font-size:12px;color:var(--muted)}
+.ctry-table td,.ctry-table th{padding:6px 10px}
+.cw{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;min-width:80px}
+.bar i{display:block;height:100%;background:var(--up)}
+.bar.bad i{background:var(--stop)} .bar.warn i{background:var(--down)}
+</style>
+
+<div class="drop-overlay">Suelta el fichero bulk (.xlsx)</div>
+<header class="top">
+  <div class="top-in">
+    <div class="brand">
+      <div>
+        <div class="eyebrow">Amazon Ads · Operaciones masivas</div>
+        <h1>Bulk <span>PPC</span></h1>
+      </div>
+    </div>
+    <div class="filechip" id="fileChip"><span class="dot"></span><b id="fileName">Sin fichero</b><span class="muted" id="filePeriod"></span></div>
+    <div class="spacer"></div>
+    <button class="btn" id="btnClaudeTop">Revisar con Claude</button>
+    <button class="btn" id="btnLoad">Cargar bulk .xlsx</button>
+    <button class="btn" id="btnSettings">Ajustes</button>
+    <input type="file" id="fileInput" accept=".xlsx" class="sr" aria-label="Cargar fichero bulk">
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="banner" id="banner">
+    <span class="tag">Ejemplo</span>
+    <div>
+      <b>Estás viendo una cuenta de ejemplo (ACME Termos, cifras inventadas).</b> Para trabajar con tu cuenta:
+      <ol>
+        <li>En la consola de Amazon Ads: <b>Operaciones masivas → Crear hoja de cálculo para descargar</b>, últimos 60 días, con el <b>informe de términos de búsqueda de Sponsored Products</b> incluido.</li>
+        <li>Suelta ese .xlsx aquí (o pulsa «Cargar bulk .xlsx»). Nada sale de tu navegador.</li>
+        <li>Revisa las propuestas, desmarca lo que no quieras, ajusta pujas a mano si hace falta y descarga el <b>bulk de subida</b>. Súbelo en <b>Operaciones masivas → Subir</b>: Amazon valida el fichero fila a fila antes de aplicar nada.</li>
+      </ol>
+    </div>
+  </div>
+  <div class="drop" id="drop">Arrastra aquí el bulk de Amazon Ads (.xlsx) o pulsa «Cargar bulk .xlsx»</div>
+
+  <div id="kpis" class="kpis" style="margin-top:16px"></div>
+  <div id="propChips" class="props"></div>
+
+  <div class="tabs" role="tablist" id="tabs">
+    <button class="tab" role="tab" data-tab="resumen" aria-selected="true">Resumen</button>
+    <button class="tab" role="tab" data-tab="pujas">Pujas<span class="n" data-n="pujas"></span></button>
+    <button class="tab" role="tab" data-tab="terminos">Términos de búsqueda<span class="n" data-n="terminos"></span></button>
+    <button class="tab" role="tab" data-tab="emplazamientos">Emplazamientos<span class="n" data-n="emplazamientos"></span></button>
+    <button class="tab" role="tab" data-tab="campanas">Campañas<span class="n" data-n="campanas"></span></button>
+    <button class="tab" role="tab" data-tab="registro">Registro de cambios</button>
+  </div>
+  <div class="toolbar" id="toolbar">
+    <select id="fPais" aria-label="Filtrar por país"><option value="">Todos los países</option></select>
+    <input type="search" id="fQ" placeholder="Buscar campaña, keyword o término…" aria-label="Buscar">
+    <select id="fApr" aria-label="Filtrar por aprobación"><option value="all">Aprobadas y descartadas</option><option value="on">Solo aprobadas</option><option value="off">Solo descartadas</option></select>
+    <span class="small" id="filterInfo"></span>
+  </div>
+  <div id="view"></div>
+</main>
+
+<footer class="foot">
+  <div class="foot-in">
+    <div class="sum" id="footSum"><b>0</b> cambios aprobados</div>
+    <div class="spacer"></div>
+    <button class="btn" id="btnCopy">Copiar resumen</button>
+    <button class="btn" id="btnCsv">Registro .csv</button>
+    <button class="btn primary" id="btnBulk">Descargar bulk de subida (.xlsx)</button>
+  </div>
+</footer>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="Ajustes">
+  <h2>Ajustes del motor</h2>
+  <p class="hint">Las reglas se aplican al recalcular. Se guardan en este navegador.</p>
+  <div class="fields" id="settingsForm">
+    <h3>Objetivo de ACOS</h3>
+    <div class="field"><label for="sAcos">ACOS objetivo por defecto (%)</label><input id="sAcos" type="number" step="0.5" min="1" max="200"></div>
+    <div class="field"><label for="sDias">Días del periodo del bulk</label><input id="sDias" type="number" step="1" min="1" max="365"></div>
+    <div class="paises" id="paisFields"></div>
+    <h3>Pujas</h3>
+    <div class="field"><label for="sClicsMin">Clics mínimos para tocar una puja</label><input id="sClicsMin" type="number" step="1" min="1"></div>
+    <div class="field"><label for="sClicsSinPedido">Clics sin pedido para pausar / negativizar</label><input id="sClicsSinPedido" type="number" step="1" min="1"></div>
+    <div class="field"><label for="sMultCPA">Gasto sin pedido que dispara (× CPA objetivo)</label><input id="sMultCPA" type="number" step="0.5" min="0.5"></div>
+    <div class="field"><label for="sSubidaMax">Subida máxima de puja (%)</label><input id="sSubidaMax" type="number" step="5" min="0"></div>
+    <div class="field"><label for="sBajadaMax">Bajada máxima de puja (%)</label><input id="sBajadaMax" type="number" step="5" min="0" max="95"></div>
+    <div class="field"><label for="sPujaMin">Puja mínima (€)</label><input id="sPujaMin" type="number" step="0.01" min="0.02"></div>
+    <div class="field"><label for="sPujaMax">Puja máxima (€)</label><input id="sPujaMax" type="number" step="0.05" min="0.05"></div>
+    <h3>Términos y emplazamientos</h3>
+    <div class="field"><label for="sCosecha">Pedidos mínimos para cosechar una exacta</label><input id="sCosecha" type="number" step="1" min="1"></div>
+    <div class="field"><label for="sEmplPaso">Paso del ajuste de emplazamiento (puntos)</label><input id="sEmplPaso" type="number" step="5" min="5"></div>
+    <div class="field"><label for="sEmplMax">Ajuste máximo de emplazamiento (%)</label><input id="sEmplMax" type="number" step="10" min="0" max="900"></div>
+    <div class="field"><label for="sPresu">Subida de presupuesto propuesta (%)</label><input id="sPresu" type="number" step="5" min="5"></div>
+    <h3>Fichero de subida</h3>
+    <div class="field"><label for="sIdioma">Valores de la hoja (Operación, Estado…)</label><select id="sIdioma"><option value="auto">Como el fichero cargado</option><option value="es">Español (Actualizar / Crear)</option><option value="en">Inglés (Update / Create)</option></select></div>
+    <div class="field"><label for="sPausadas">Campañas en pausa</label><select id="sPausadas"><option value="0">Ignorar (solo activas)</option><option value="1">Analizar también</option></select></div>
+  </div>
+  <div class="actions">
+    <button class="btn primary" id="btnApply">Guardar y recalcular</button>
+    <button class="btn" id="btnReset">Restablecer</button>
+    <span class="spacer"></span>
+    <button class="btn" id="btnCloseDrawer">Cerrar</button>
+  </div>
+</aside>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<script>
+(function(){
+'use strict';
+/* ===================== utilidades ===================== */
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function num(v,def){ if(def===undefined) def=0; if(v===null||v===undefined) return def; if(typeof v==='number') return isFinite(v)?v:def; let s=String(v).trim(); if(!s) return def; s=s.replace(/[€$£%\s]/g,''); if(/,\d{1,2}$/.test(s)&&!/\.\d+$/.test(s)) s=s.replace(/\./g,'').replace(',','.'); else s=s.replace(/,/g,''); const n=parseFloat(s); return isFinite(n)?n:def; }
+const r2=x=>Math.round(x*100)/100;
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const fEur=x=>(isFinite(x)?x:0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+const fBid=x=>(isFinite(x)?x:0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+const fPct=(x,d)=>(isFinite(x)?x*100:0).toLocaleString('es-ES',{minimumFractionDigits:d==null?1:d,maximumFractionDigits:d==null?1:d})+' %';
+const fInt=x=>Math.round(isFinite(x)?x:0).toLocaleString('es-ES');
+const fDec=(x,d)=>(isFinite(x)?x:0).toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d});
+const lower=s=>String(s||'').trim().toLowerCase().replace(/\s+/g,' ');
+const isAsin=s=>/^b0[a-z0-9]{8}$/i.test(String(s||'').trim());
+let toastT; function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2600); }
+
+/* ===================== ZIP + XLSX (lectura exacta, sin perder dígitos de los IDs) ===================== */
+function readZip(buf){
+  const u8=new Uint8Array(buf), dv=new DataView(buf); const n=u8.length;
+  let eocd=-1; for(let i=n-22;i>=Math.max(0,n-70000);i--){ if(dv.getUint32(i,true)===0x06054b50){ eocd=i; break; } }
+  if(eocd<0) throw new Error('No es un fichero .xlsx válido (no se encuentra el directorio ZIP).');
+  const count=dv.getUint16(eocd+10,true), cdOff=dv.getUint32(eocd+16,true);
+  const dec=new TextDecoder('utf-8'); const files={}; let p=cdOff;
+  for(let k=0;k<count;k++){
+    if(dv.getUint32(p,true)!==0x02014b50) break;
+    const method=dv.getUint16(p+10,true), csize=dv.getUint32(p+20,true), usize=dv.getUint32(p+24,true);
+    const nl=dv.getUint16(p+28,true), el=dv.getUint16(p+30,true), cl=dv.getUint16(p+32,true), lo=dv.getUint32(p+42,true);
+    const name=dec.decode(u8.subarray(p+46,p+46+nl));
+    files[name]={method,csize,usize,lo}; p+=46+nl+el+cl;
+  }
+  return { has:n=>!!files[n], text(name){ const f=files[name]; if(!f) return null; const lnl=dv.getUint16(f.lo+26,true), lel=dv.getUint16(f.lo+28,true); const start=f.lo+30+lnl+lel; const data=u8.subarray(start,start+f.csize); let out; if(f.method===0) out=data; else if(f.method===8) out=pako.inflateRaw(data); else throw new Error('Compresión ZIP no soportada: '+f.method); return dec.decode(out); } };
+}
+const unesc=s=>String(s).replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&#(\d+);/g,(m,d)=>String.fromCodePoint(+d)).replace(/&#x([0-9a-f]+);/gi,(m,h)=>String.fromCodePoint(parseInt(h,16))).replace(/&amp;/g,'&');
+function colIdx(ref){ let n=0; for(const ch of ref){ n=n*26+(ch.charCodeAt(0)-64); } return n-1; }
+function readXlsx(buf){
+  const zip=readZip(buf);
+  const wb=zip.text('xl/workbook.xml'); if(!wb) throw new Error('El fichero no contiene un libro de Excel.');
+  const rels=zip.text('xl/_rels/workbook.xml.rels')||''; const relMap={};
+  for(const m of rels.matchAll(/<Relationship\b([^>]*?)\/?>/g)){ const a=m[1]; const id=(a.match(/\bId="([^"]+)"/)||[])[1]; const t=(a.match(/\bTarget="([^"]+)"/)||[])[1]; if(id&&t) relMap[id]=unesc(t); }
+  const sheets=[]; for(const m of wb.matchAll(/<sheet\b([^>]*?)\/?>/g)){ const a=m[1]; const name=unesc((a.match(/\bname="([^"]*)"/)||[])[1]||''); const rid=(a.match(/\br:id="([^"]+)"/)||[])[1]; let t=relMap[rid]||''; t=t.startsWith('/')?t.slice(1):'xl/'+t; sheets.push({name,path:t}); }
+  const ss=[]; const ssx=zip.text('xl/sharedStrings.xml'); if(ssx){ for(const m of ssx.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)){ let t=''; for(const tm of m[1].matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)) t+=tm[1]; ss.push(unesc(t)); } }
+  function parseRows(xml,limit){
+    const rows=[]; for(const rm of xml.matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)){
+      const inner=rm[2]||''; const cells=[]; let max=-1;
+      for(const cm of inner.matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)){
+        const attrs=cm[1], body=cm[2]||''; const ref=(attrs.match(/\br="([A-Z]+)\d+"/)||[])[1]; if(!ref) continue; const ci=colIdx(ref); const t=(attrs.match(/\bt="([^"]+)"/)||[])[1]; let v='';
+        if(t==='s'){ const vm=body.match(/<v>([^<]*)<\/v>/); v=vm?(ss[+vm[1]]||''):''; }
+        else if(t==='inlineStr'){ let s=''; for(const tm of body.matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)) s+=tm[1]; v=unesc(s); }
+        else if(t==='str'){ const vm=body.match(/<v>([\s\S]*?)<\/v>/); v=vm?unesc(vm[1]):''; }
+        else { const vm=body.match(/<v>([^<]*)<\/v>/); v=vm?vm[1]:''; if(t==='b') v=(v==='1'?'TRUE':'FALSE'); }
+        cells[ci]=v; if(ci>max) max=ci;
+      }
+      for(let k=0;k<=max;k++) if(cells[k]===undefined) cells[k]='';
+      if(max>=0||!rows.length) rows.push(cells); if(limit&&rows.length>=limit) break;
+    }
+    return rows;
+  }
+  return { sheets, header(sh){ const x=zip.text(sh.path); if(!x) return []; return parseRows(x,1)[0]||[]; }, rows(sh){ const x=zip.text(sh.path); return x?parseRows(x):[]; } };
+}
+/* escritura: ZIP almacenado (sin comprimir) con CRC32, celdas numéricas escritas con sus dígitos exactos */
+const CRC_T=(()=>{ const t=new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); t[n]=c>>>0; } return t; })();
+function crc32(u8){ let c=0xFFFFFFFF; for(let i=0;i<u8.length;i++) c=CRC_T[(c^u8[i])&0xFF]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+function zipStore(entries){ /* entries: [{name, data:Uint8Array}] */
+  const enc=new TextEncoder(); const parts=[]; const cd=[]; let off=0; const d=new Date();
+  const dosTime=((d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1))&0xFFFF, dosDate=(((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate())&0xFFFF;
+  for(const e of entries){ const name=enc.encode(e.name), data=e.data, crc=crc32(data); const lh=new DataView(new ArrayBuffer(30)); lh.setUint32(0,0x04034b50,true); lh.setUint16(4,20,true); lh.setUint16(6,0x0800,true); lh.setUint16(8,0,true); lh.setUint16(10,dosTime,true); lh.setUint16(12,dosDate,true); lh.setUint32(14,crc,true); lh.setUint32(18,data.length,true); lh.setUint32(22,data.length,true); lh.setUint16(26,name.length,true); lh.setUint16(28,0,true);
+    parts.push(new Uint8Array(lh.buffer),name,data);
+    const ch=new DataView(new ArrayBuffer(46)); ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true); ch.setUint16(8,0x0800,true); ch.setUint16(10,0,true); ch.setUint16(12,dosTime,true); ch.setUint16(14,dosDate,true); ch.setUint32(16,crc,true); ch.setUint32(20,data.length,true); ch.setUint32(24,data.length,true); ch.setUint16(28,name.length,true); ch.setUint16(30,0,true); ch.setUint16(32,0,true); ch.setUint16(34,0,true); ch.setUint16(36,0,true); ch.setUint32(38,0,true); ch.setUint32(42,off,true);
+    cd.push(new Uint8Array(ch.buffer),name); off+=30+name.length+data.length; }
+  let cdLen=0; cd.forEach(p=>cdLen+=p.length);
+  const eo=new DataView(new ArrayBuffer(22)); eo.setUint32(0,0x06054b50,true); eo.setUint16(4,0,true); eo.setUint16(6,0,true); eo.setUint16(8,entries.length,true); eo.setUint16(10,entries.length,true); eo.setUint32(12,cdLen,true); eo.setUint32(16,off,true); eo.setUint16(20,0,true);
+  const all=[...parts,...cd,new Uint8Array(eo.buffer)]; let len=0; all.forEach(p=>len+=p.length); const out=new Uint8Array(len); let q=0; for(const p of all){ out.set(p,q); q+=p.length; } return out;
+}
+const xesc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'');
+function colRef(i){ let s=''; i++; while(i>0){ const m=(i-1)%26; s=String.fromCharCode(65+m)+s; i=Math.floor((i-1)/26); } return s; }
+function writeXlsx(sheetName, hdr, rows, numCols){ /* numCols: Set de índices de columna que se escriben como número cuando el valor es numérico */
+  const enc=new TextEncoder(); let sd=''; const all=[hdr].concat(rows);
+  all.forEach((r,ri)=>{ let cells=''; r.forEach((v,ci)=>{ if(v===''||v===null||v===undefined) return; const ref=colRef(ci)+(ri+1); const s=String(v); if(ri>0&&numCols.has(ci)&&/^-?\d+(\.\d+)?$/.test(s)) cells+='<c r="'+ref+'"><v>'+s+'</v></c>'; else cells+='<c r="'+ref+'" t="inlineStr"><is><t xml:space="preserve">'+xesc(s)+'</t></is></c>'; }); sd+='<row r="'+(ri+1)+'">'+cells+'</row>'; });
+  const sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetData>'+sd+'</sheetData></worksheet>';
+  const wb='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="'+xesc(sheetName)+'" sheetId="1" r:id="rId1"/></sheets></workbook>';
+  const wbrels='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
+  const rels='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+  const ct='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>';
+  const styles='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs></styleSheet>';
+  return zipStore([{name:'[Content_Types].xml',data:enc.encode(ct)},{name:'_rels/.rels',data:enc.encode(rels)},{name:'xl/workbook.xml',data:enc.encode(wb)},{name:'xl/_rels/workbook.xml.rels',data:enc.encode(wbrels)},{name:'xl/styles.xml',data:enc.encode(styles)},{name:'xl/worksheets/sheet1.xml',data:enc.encode(sheet)}]);
+}
+
+/* ===================== cabeceras y vocabulario de la hoja (es / en) ===================== */
+const H={
+  product:['Producto','Product'], entity:['Entidad','Entity'], op:['Operación','Operation'],
+  campId:['ID de la campaña','Campaign ID','Campaign Id'], agId:['ID del grupo de anuncios','Ad Group ID','Ad Group Id'],
+  portfolioId:['ID de la cartera','Portfolio ID','Portfolio Id'], adId:['ID del anuncio','Ad ID','Ad Id'],
+  kwId:['ID de palabra clave','Keyword ID','Keyword Id'], ptId:['ID de segmentación por productos','Product Targeting ID','Product Targeting Id'],
+  campName:['Nombre de la campaña','Campaign Name'], agName:['Nombre del grupo de anuncios','Ad Group Name'],
+  campNameI:['Nombre de la campaña (Solo informativo)','Campaign Name (Informational only)'],
+  agNameI:['Nombre del grupo de anuncios (Solo informativo)','Ad Group Name (Informational only)'],
+  portfolioNameI:['Nombre de la cartera (Solo informativo)','Portfolio Name (Informational only)'],
+  startDate:['Fecha de inicio','Start Date'], endDate:['Fecha de finalización','End Date'],
+  targetingType:['Tipo de segmentación','Targeting Type'], state:['Estado','State'],
+  campStateI:['Estado de la campaña (Solo informativo)','Campaign State (Informational only)'],
+  agStateI:['Estado del grupo de anuncios (Solo informativo)','Ad Group State (Informational only)'],
+  budget:['Presupuesto diario','Daily Budget'], sku:['SKU'], asinI:['ASIN (Solo informativo)','ASIN (Informational only)','ASIN'],
+  agBid:['Puja predeterminada del grupo de anuncios','Ad Group Default Bid'],
+  agBidI:['Puja predeterminada del grupo de anuncios (Solo informativo)','Ad Group Default Bid (Informational only)'],
+  bid:['Puja','Bid'], kwText:['Texto de palabra clave','Keyword Text'], match:['Tipo de coincidencia','Match Type'],
+  strategy:['Estrategia de pujas','Bidding Strategy'], placement:['Emplazamiento','Placement'], pct:['Porcentaje','Percentage'],
+  ptExpr:['Fórmula de segmentación por productos','Product Targeting Expression'],
+  ptExprI:['Fórmula de segmentación por productos aplicada (Solo informativo)','Resolved Product Targeting Expression (Informational only)'],
+  imp:['Impresiones','Impressions'], clicks:['Clics','Clicks'], ctr:['Índice de clics','Click-through Rate'],
+  spend:['Inversión','Spend'], sales:['Ventas','Sales'], orders:['Pedidos','Orders'], units:['Unidades','Units'],
+  cvr:['Índice de conversión','Conversion Rate'], acos:['ACOS'], cpc:['CPC'], roas:['ROAS'],
+  term:['Término de búsqueda de los clientes','Customer Search Term','Término de búsqueda de cliente'],
+};
+const NUMKEYS=['campId','agId','portfolioId','adId','kwId','ptId','startDate','endDate','budget','agBid','agBidI','bid','pct','imp','clicks','ctr','spend','sales','orders','units','cvr','acos','cpc','roas'];
+const fold=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toLowerCase();
+const normH=fold;
+function mapHeader(hdr){ const C={}; const idx={}; hdr.forEach((h,i)=>{ const k=normH(h); if(!(k in idx)) idx[k]=i; }); for(const key in H){ for(const alias of H[key]){ const i=idx[normH(alias)]; if(i!==undefined){ C[key]=i; break; } } } return C; }
+const ENT={campaign:['campaña','campaign'],adgroup:['grupo de anuncios','ad group'],bidadj:['ajuste de puja','bidding adjustment'],campNegKw:['palabra clave negativa de la campaña','campaign negative keyword'],keyword:['palabra clave','keyword'],negKw:['palabra clave negativa','negative keyword'],pt:['segmentación por productos','product targeting'],negPt:['segmentación negativa por productos','negative product targeting'],ad:['anuncio de producto','product ad']};
+const STATES={enabled:['activada','enabled','activado','activa'],paused:['en pausa','paused','pausado','pausada'],archived:['archivada','archived','archivado']};
+const MATCH={exact:['exacta','exact'],phrase:['frase','phrase'],broad:['amplia','broad'],negExact:['exacta negativa','negativeexact','negative exact'],negPhrase:['frase negativa','negativephrase','negative phrase']};
+const TARGETING={auto:['automática','automatica','auto'],manual:['manual']};
+function normBy(table,v){ const k=fold(v); if(!k) return ''; for(const key in table){ if(table[key].some(x=>fold(x)===k)) return key; } return 'other:'+k; }
+const VOCAB={
+  es:{ op:{create:'Crear',update:'Actualizar',archive:'Archivar'}, state:{enabled:'activada',paused:'en pausa',archived:'archivada'},
+       match:{exact:'Exacta',phrase:'Frase',broad:'Amplia',negExact:'Exacta negativa',negPhrase:'Frase negativa'},
+       entity:{campaign:'Campaña',adgroup:'Grupo de anuncios',bidadj:'Ajuste de puja',campNegKw:'Palabra clave negativa de la campaña',keyword:'Palabra clave',negKw:'Palabra clave negativa',pt:'Segmentación por productos',negPt:'Segmentación negativa por productos',ad:'Anuncio de producto'} },
+  en:{ op:{create:'Create',update:'Update',archive:'Archive'}, state:{enabled:'enabled',paused:'paused',archived:'archived'},
+       match:{exact:'exact',phrase:'phrase',broad:'broad',negExact:'negativeExact',negPhrase:'negativePhrase'},
+       entity:{campaign:'Campaign',adgroup:'Ad Group',bidadj:'Bidding Adjustment',campNegKw:'Campaign Negative Keyword',keyword:'Keyword',negKw:'Negative Keyword',pt:'Product Targeting',negPt:'Negative Product Targeting',ad:'Product Ad'} }
+};
+const COUNTRY_NAMES={ES:'España',IT:'Italia',FR:'Francia',DE:'Alemania',NL:'Países Bajos',BE:'Bélgica',PL:'Polonia',SE:'Suecia',UK:'Reino Unido','—':'Sin país'};
+const COUNTRY_ALIAS={ES:'ES',ESP:'ES','ESPAÑA':'ES',ESPANA:'ES',SPAIN:'ES',IT:'IT',ITA:'IT',ITALIA:'IT',ITALY:'IT',FR:'FR',FRA:'FR',FRANCIA:'FR',FRANCE:'FR',DE:'DE',ALE:'DE',ALEMANIA:'DE',GER:'DE',GERMANY:'DE',NL:'NL',HL:'NL',HOL:'NL',HOLANDA:'NL',NETHERLANDS:'NL',BE:'BE',BEL:'BE',BELGICA:'BE','BÉLGICA':'BE',PL:'PL',POLONIA:'PL',SE:'SE',SUECIA:'SE',UK:'UK',GB:'UK'};
+function countryOf(name,portfolio){
+  const scan=s=>{ if(!s) return ''; const segs=String(s).toUpperCase().split('|').map(x=>x.trim()); let found=''; for(const seg of segs){ if(COUNTRY_ALIAS[seg]) found=COUNTRY_ALIAS[seg]; } if(found) return found; const words=String(s).toUpperCase().split(/[^A-ZÁÉÍÓÚÑ]+/); for(const w of words){ if(w.length>=2&&COUNTRY_ALIAS[w]&&w!=='DE') found=COUNTRY_ALIAS[w]; } if(!found){ for(const w of words){ if(w==='DE') found='DE'; } } return found; };
+  return scan(name)||scan(portfolio)||'—';
+}
+function normId(v){ let s=String(v==null?'':v).trim(); if(/^\d+\.0+$/.test(s)) s=s.replace(/\.0+$/,''); if(/^\d+(\.\d+)?e\+?\d+$/i.test(s)){ const n=Number(s); s=n.toLocaleString('fullwide',{useGrouping:false}); } return s; }
+
+/* ===================== estado ===================== */
+const DEF={acos:25,acosPais:{},clicsMin:10,clicsSinPedido:10,multCPA:2,subidaMax:40,bajadaMax:40,pujaMin:0.02,pujaMax:2.5,cosechaPedidos:2,emplPaso:15,emplMax:200,dias:60,idioma:'auto',incluirPausadas:false,presupuestoPct:25};
+const LS_KEY='bulkppc.settings.v1';
+function loadSettings(){ let s={}; try{ s=JSON.parse(localStorage.getItem(LS_KEY)||'{}')||{}; }catch(e){ s={}; } return Object.assign({},DEF,s,{acosPais:Object.assign({},s.acosPais||{})}); }
+function saveSettings(){ try{ localStorage.setItem(LS_KEY,JSON.stringify(STATE.settings)); }catch(e){} }
+const STATE={settings:loadSettings(),fileName:'',sheetName:'',hdr:[],C:{},rows:[],stRows:[],learned:{state:{},match:{},entity:{}},product:'Sponsored Products',locale:'es',period:null,props:[],ex:false,tab:'resumen',filters:{pais:'',q:'',apr:'all'},sample:null,downloads:null,claudeText:'',totals:null,countries:[],camps:new Map(),ags:new Map()};
+
+/* ===================== construcción de filas canónicas ===================== */
+function mkRow(raw,C){
+  const g=k=>(C[k]==null?'':(raw[C[k]]==null?'':raw[C[k]]));
+  const r={raw, product:String(g('product')||'').trim(), entityRaw:String(g('entity')||'').trim(), entity:normBy(ENT,g('entity')),
+    campId:normId(g('campId')), agId:normId(g('agId')), kwId:normId(g('kwId')), ptId:normId(g('ptId')), adId:normId(g('adId')),
+    campName:String(g('campName')||g('campNameI')||'').trim(), agName:String(g('agName')||g('agNameI')||'').trim(), portfolio:String(g('portfolioNameI')||'').trim(),
+    targeting:normBy(TARGETING,g('targetingType')), stateRaw:String(g('state')||'').trim(), state:normBy(STATES,g('state')),
+    campState:normBy(STATES,g('campStateI')), agState:normBy(STATES,g('agStateI')),
+    budget:num(g('budget'),NaN), sku:String(g('sku')||'').trim(), asin:String(g('asinI')||'').trim(),
+    agBid:num(g('agBid'),NaN), agBidI:num(g('agBidI'),NaN), bid:num(g('bid'),NaN),
+    kwText:String(g('kwText')||'').trim(), matchRaw:String(g('match')||'').trim(), match:normBy(MATCH,g('match')),
+    strategy:String(g('strategy')||'').trim(), placementRaw:String(g('placement')||'').trim(), pct:num(g('pct'),NaN),
+    ptExpr:String(g('ptExpr')||g('ptExprI')||'').trim(),
+    imp:num(g('imp')), clicks:num(g('clicks')), spend:num(g('spend')), sales:num(g('sales')), orders:num(g('orders')), units:num(g('units')), cpc:num(g('cpc'),NaN),
+    term:String(g('term')||'').trim()};
+  if(!isFinite(r.cpc)&&r.clicks>0) r.cpc=r.spend/r.clicks;
+  return r;
+}
+function learn(rows){ const L={state:{},match:{},entity:{}}; for(const r of rows){ if(r.state&&!r.state.startsWith('other')&&!L.state[r.state]) L.state[r.state]=r.stateRaw; if(r.match&&!r.match.startsWith('other')&&!L.match[r.match]) L.match[r.match]=r.matchRaw; if(r.entity&&!r.entity.startsWith('other')&&!L.entity[r.entity]) L.entity[r.entity]=r.entityRaw; } STATE.learned=L; const p=rows.find(x=>x.product); STATE.product=p?p.product:'Sponsored Products'; }
+function V(kind,key){ const loc=STATE.settings.idioma==='auto'?STATE.locale:STATE.settings.idioma; if(kind!=='op'){ const l=STATE.learned[kind]&&STATE.learned[kind][key]; if(l&&(STATE.settings.idioma==='auto'||loc===STATE.locale)) return l; } return VOCAB[loc][kind][key]; }
+function periodFromName(name){ const m=String(name||'').match(/(20\d{6})-(20\d{6})/); if(!m) return null; const p=s=>new Date(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6,8)); const a=p(m[1]),b=p(m[2]); const days=Math.round((b-a)/86400000)+1; if(!(days>0&&days<400)) return null; return {from:a,to:b,days}; }
+const fDate=d=>d.toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'});
+
+function loadWorkbook(buf,name){
+  const wbk=readXlsx(buf); let spSheet=null, stSheet=null, spHdr=null, stHdr=null;
+  for(const sh of wbk.sheets){ const hdr=wbk.header(sh); if(!hdr.length) continue; const C=mapHeader(hdr); if(C.term!=null&&C.campId!=null){ if(!stSheet){ stSheet=sh; stHdr=hdr; } continue; } if(C.entity!=null&&C.kwId!=null&&C.bid!=null&&C.campId!=null){ if(!spSheet){ spSheet=sh; spHdr=hdr; } } }
+  if(!spSheet) throw new Error('No encuentro la hoja de campañas de Sponsored Products (con columnas Entidad, ID de palabra clave, Puja…). ¿Es un bulk descargado de Operaciones masivas?');
+  const C=mapHeader(spHdr); const rawRows=wbk.rows(spSheet).slice(1).filter(r=>r.some(v=>String(v).trim()!==''));
+  const rows=rawRows.map(r=>mkRow(r,C));
+  let stRows=[]; if(stSheet){ const CS=mapHeader(stHdr); stRows=wbk.rows(stSheet).slice(1).filter(r=>r.some(v=>String(v).trim()!=='')).map(r=>mkRow(r,CS)); }
+  STATE.fileName=name||'bulk.xlsx'; STATE.sheetName=spSheet.name; STATE.hdr=spHdr; STATE.C=C; STATE.rows=rows; STATE.stRows=stRows; STATE.ex=false; STATE.claudeText=''; STATE.ctx='';
+  STATE.locale=(normH(spHdr[C.entity])==='entidad')?'es':'en'; learn(rows);
+  const per=periodFromName(name); STATE.period=per; if(per){ STATE.settings.dias=per.days; }
+  analyze(); render(); toast(rows.length.toLocaleString('es-ES')+' filas leídas'+(stRows.length?(' · '+stRows.length.toLocaleString('es-ES')+' términos de búsqueda'):' · sin informe de términos'));
+}
+
+/* ===================== motor de decisiones ===================== */
+function tgt(country){ const S=STATE.settings; const v=S.acosPais&&S.acosPais[country]; return (isFinite(v)&&v>0?v:S.acos)/100; }
+function analyze(){
+  const S=STATE.settings, rows=STATE.rows, props=[]; let pid=0;
+  const camps=new Map(), ags=new Map();
+  for(const r of rows){ if(r.entity==='campaign'){ camps.set(r.campId,{r,id:r.campId,name:r.campName,country:countryOf(r.campName,r.portfolio),state:r.state,targeting:r.targeting,budget:r.budget,strategy:r.strategy,m:{imp:r.imp,clicks:r.clicks,spend:r.spend,sales:r.sales,orders:r.orders},kw:0,pt:0,negExact:new Set(),negPhrase:[],negAsin:new Set(),ags:[]}); } }
+  for(const r of rows){ if(r.entity==='adgroup'){ const c=camps.get(r.campId); const a={r,id:r.agId,campId:r.campId,name:r.agName,state:r.state,defBid:isFinite(r.agBid)?r.agBid:r.agBidI,hasKw:false,hasPt:false}; ags.set(r.agId,a); if(c) c.ags.push(a); } }
+  const exactByCountry={}; const ptByCountry={};
+  for(const r of rows){ const c=camps.get(r.campId); if(!c) continue; const a=ags.get(r.agId);
+    if(r.entity==='keyword'){ if(a) a.hasKw=true; c.kw++; if(r.match==='exact'&&r.state!=='archived'){ (exactByCountry[c.country]=exactByCountry[c.country]||new Set()).add(lower(r.kwText)); } }
+    else if(r.entity==='pt'){ if(a) a.hasPt=true; c.pt++; const m=r.ptExpr.match(/asin="?([A-Z0-9]{10})"?/i); if(m&&r.state!=='archived'){ (ptByCountry[c.country]=ptByCountry[c.country]||new Set()).add(m[1].toUpperCase()); } }
+    else if(r.entity==='negKw'||r.entity==='campNegKw'){ if(r.state==='archived') continue; if(r.match==='negPhrase') c.negPhrase.push(lower(r.kwText)); else c.negExact.add(lower(r.kwText)); }
+    else if(r.entity==='negPt'){ const m=r.ptExpr.match(/asin="?([A-Z0-9]{10})"?/i); if(m&&r.state!=='archived') c.negAsin.add(m[1].toUpperCase()); }
+  }
+  /* totales por país y cuenta */
+  const byC={}; let tot={imp:0,clicks:0,spend:0,sales:0,orders:0,camps:0,active:0};
+  for(const c of camps.values()){ if(c.state==='archived') continue; const b=byC[c.country]=byC[c.country]||{country:c.country,imp:0,clicks:0,spend:0,sales:0,orders:0,camps:0,active:0}; for(const k of ['imp','clicks','spend','sales','orders']){ b[k]+=c.m[k]; tot[k]+=c.m[k]; } b.camps++; tot.camps++; if(c.state==='enabled'){ b.active++; tot.active++; } }
+  const aovC=cc=>{ const b=byC[cc]; if(b&&b.orders>=3) return b.sales/b.orders; if(tot.orders>=3) return tot.sales/tot.orders; return 20; };
+  const cpaT=(camp)=>{ const aov=(camp.m.orders>=3)?camp.m.sales/camp.m.orders:aovC(camp.country); return aov*tgt(camp.country); };
+  const campOk=c=>c&&c.state!=='archived'&&(S.incluirPausadas||c.state==='enabled');
+  const agOk=a=>!a||(a.state!=='archived'&&(S.incluirPausadas||a.state==='enabled'));
+  const add=p=>{ p.id='p'+(++pid); if(p.approved===undefined) p.approved=true; props.push(p); return p; };
+  const met=r=>({imp:r.imp,clicks:r.clicks,spend:r.spend,sales:r.sales,orders:r.orders,acos:r.sales>0?r.spend/r.sales:NaN,cpc:r.cpc});
+  /* --- pujas: palabras clave y segmentaciones --- */
+  for(const r of rows){
+    if(r.entity!=='keyword'&&r.entity!=='pt') continue; const c=camps.get(r.campId); const a=ags.get(r.agId); if(!campOk(c)||!agOk(a)||r.state!=='enabled') continue;
+    const T=tgt(c.country), cpa=cpaT(c); const bid=isFinite(r.bid)&&r.bid>0?r.bid:(a&&isFinite(a.defBid)?a.defBid:NaN); const label=r.entity==='keyword'?r.kwText:(r.ptExpr||'segmentación'); const sub=r.entity==='keyword'?(r.matchRaw||''):'segmentación por productos';
+    const base={country:c.country,campName:c.name,agName:a?a.name:r.agName,campId:c.id,agId:r.agId,row:r,label,sub,m:met(r),entity:r.entity};
+    if(r.orders===0){ if(r.clicks>=S.clicsSinPedido||r.spend>=S.multCPA*cpa){ add(Object.assign(base,{kind:'pausar',before:isFinite(bid)?bid:NaN,after:null,conf:r.clicks>=2*S.clicsSinPedido?'alta':'media',reason:fInt(r.clicks)+' clics y '+fEur(r.spend)+' sin ningún pedido en el periodo (CPA objetivo '+fEur(cpa)+').'})); } continue; }
+    const acos=r.spend/r.sales, rpc=r.sales/r.clicks;
+    if(acos>=1.5&&r.clicks>=S.clicsMin){ add(Object.assign(base,{kind:'pausar',before:bid,after:null,conf:'alta',reason:'ACOS '+fPct(acos,0)+': cada venta cuesta bastante más de lo que ingresa ('+fEur(r.spend)+' por '+fEur(r.sales)+').'})); continue; }
+    if(!isFinite(bid)) continue;
+    if(acos>T*1.2&&r.clicks>=S.clicsMin){ let nb=bid*(T/acos); nb=Math.max(nb,bid*(1-S.bajadaMax/100)); nb=r2(clamp(nb,S.pujaMin,S.pujaMax)); if(bid-nb>=0.02) add(Object.assign(base,{kind:'bajar',before:bid,after:nb,conf:r.orders>=3?'alta':'media',reason:'ACOS '+fPct(acos)+' con '+fInt(r.clicks)+' clics y '+fInt(r.orders)+' pedidos, por encima del objetivo ('+fPct(T,0)+'). La puja baja en proporción para acercar el ACOS al objetivo.'})); continue; }
+    if(acos<T*0.8&&r.clicks>=S.clicsMin){ let nb, hundida=false; if(bid<=0.05){ hundida=true; nb=rpc*T; } else { nb=Math.min(bid*(T/acos),bid*(1+S.subidaMax/100)); } nb=r2(clamp(nb,S.pujaMin,S.pujaMax)); if(nb-bid>=0.02) add(Object.assign(base,{kind:'subir',before:bid,after:nb,conf:r.orders>=3?'alta':'media',flag:hundida?'hundida':'',reason:(hundida?'Puja hundida a '+fBid(bid)+' pero convierte: ':'')+'ACOS '+fPct(acos)+' con '+fInt(r.clicks)+' clics y '+fInt(r.orders)+' pedidos, por debajo del objetivo ('+fPct(T,0)+'). Hay margen para comprar más tráfico rentable.'})); }
+  }
+  /* --- términos de búsqueda --- */
+  const agg=new Map();
+  for(const s of STATE.stRows){ if(!s.term) continue; const key=s.campId+'|'+s.agId+'|'+lower(s.term); let x=agg.get(key); if(!x){ x={campId:s.campId,agId:s.agId,term:s.term,kwText:s.kwText,match:s.match,matchRaw:s.matchRaw,imp:0,clicks:0,spend:0,sales:0,orders:0}; agg.set(key,x); } x.imp+=s.imp; x.clicks+=s.clicks; x.spend+=s.spend; x.sales+=s.sales; x.orders+=s.orders; }
+  const findExactHome=(country,prefix,agIdSelf)=>{ const cands=[]; for(const c of camps.values()){ if(c.country!==country||c.state!=='enabled'||c.targeting==='auto') continue; for(const a of c.ags){ if(a.state==='enabled'&&a.hasKw) cands.push({c,a}); } } if(!cands.length) return null; const pf=lower(prefix); const score=x=>(/exacta|exact/i.test(x.c.name)?4:0)+(lower(x.c.name).startsWith(pf)?2:0)+(x.a.id===agIdSelf?1:0); cands.sort((p,q)=>score(q)-score(p)); return cands[0]; };
+  const findPtHome=(country,prefix)=>{ const cands=[]; for(const c of camps.values()){ if(c.country!==country||c.state!=='enabled'||c.targeting==='auto') continue; for(const a of c.ags){ if(a.state==='enabled'&&a.hasPt) cands.push({c,a}); } } if(!cands.length) return null; const pf=lower(prefix); const score=x=>(/ataque|asin|compet|producto|product/i.test(x.c.name)?4:0)+(lower(x.c.name).startsWith(pf)?2:0); cands.sort((p,q)=>score(q)-score(p)); return cands[0]; };
+  for(const x of agg.values()){
+    const c=camps.get(x.campId); const a=ags.get(x.agId); if(!campOk(c)||!agOk(a)) continue; const T=tgt(c.country), cpa=cpaT(c); const asin=isAsin(x.term)?x.term.toUpperCase():''; const tl=lower(x.term); x.cpc=x.clicks>0?x.spend/x.clicks:NaN;
+    const base={country:c.country,campName:c.name,agName:a?a.name:'',campId:c.id,agId:x.agId,label:x.term,sub:x.kwText?('vía '+x.kwText+(x.matchRaw?' · '+x.matchRaw:'')):'',m:{imp:x.imp,clicks:x.clicks,spend:x.spend,sales:x.sales,orders:x.orders,acos:x.sales>0?x.spend/x.sales:NaN,cpc:x.cpc},term:x.term};
+    if(x.orders===0){
+      if(x.clicks>=S.clicsSinPedido||x.spend>=S.multCPA*cpa){
+        if(asin){ if(c.negAsin.has(asin)) continue; add(Object.assign(base,{kind:'negativo',neg:'asin',asin,before:'',after:'ASIN negativo',conf:x.clicks>=2*S.clicsSinPedido?'alta':'media',reason:'Producto de la competencia que recibe clics ('+fInt(x.clicks)+', '+fEur(x.spend)+') y no convierte. Se excluye como segmentación negativa en el grupo.'})); }
+        else { if(c.negExact.has(tl)||c.negPhrase.some(p=>tl.includes(p))) continue; if(x.match==='exact'&&lower(x.kwText)===tl) continue; const nivel=c.targeting==='auto'?'campaña':'grupo'; add(Object.assign(base,{kind:'negativo',neg:'kw',before:'',after:'Exacta negativa',conf:x.clicks>=2*S.clicsSinPedido?'alta':'media',reason:'Término sin pedidos tras '+fInt(x.clicks)+' clics ('+fEur(x.spend)+'). Se bloquea como exacta negativa a nivel de '+nivel+'.'})); }
+      }
+      continue;
+    }
+    const acos=x.spend/x.sales, rpc=x.sales/x.clicks;
+    if(x.orders>=S.cosechaPedidos&&acos<=T){
+      if(asin){ if((ptByCountry[c.country]||new Set()).has(asin)) continue; const homeP=(a&&a.hasPt&&c.targeting!=='auto')?{c,a}:findPtHome(c.country,String(c.name).split('|')[0]); if(!homeP) continue; const nb=r2(clamp(Math.min(rpc*T,(x.cpc||rpc*T)*1.25),S.pujaMin,S.pujaMax)); add(Object.assign(base,{kind:'cosecha',neg:'asin',asin,before:'',after:nb,conf:x.orders>=3?'alta':'media',homeCamp:homeP.c,homeAg:homeP.a,reason:fInt(x.orders)+' pedidos al '+fPct(acos)+' de ACOS sobre ese ASIN. Se añade como segmentación por producto en «'+homeP.c.name+'» › '+homeP.a.name+' con puja '+fBid(nb)+' (ingreso por clic × ACOS objetivo).'})); continue; }
+      if((exactByCountry[c.country]||new Set()).has(tl)) continue; if(x.match==='exact'&&lower(x.kwText)===tl) continue;
+      const home=(a&&a.hasKw&&c.targeting!=='auto')?{c,a}:findExactHome(c.country,String(c.name).split('|')[0],x.agId); if(!home){ add(Object.assign(base,{kind:'vigilar',before:'',after:'',approved:false,reason:fInt(x.orders)+' pedidos al '+fPct(acos)+' y no existe como exacta en '+(COUNTRY_NAMES[c.country]||c.country)+', pero no hay ninguna campaña manual activa en ese país donde crearla.'})); continue; }
+      const nb=r2(clamp(Math.min(rpc*T,(x.cpc||rpc*T)*1.25),S.pujaMin,S.pujaMax));
+      add(Object.assign(base,{kind:'cosecha',neg:'kw',before:'',after:nb,conf:x.orders>=3?'alta':'media',homeCamp:home.c,homeAg:home.a,reason:fInt(x.orders)+' pedidos al '+fPct(acos)+' de ACOS y aún no existe como exacta en '+(COUNTRY_NAMES[c.country]||c.country)+'. Se crea en «'+home.c.name+'» › '+home.a.name+' con puja '+fBid(nb)+' (ingreso por clic × ACOS objetivo, tope CPC × 1,25).'}));
+      continue;
+    }
+    if(acos>T*1.5&&x.clicks>=S.clicsMin){ add(Object.assign(base,{kind:'vigilar',before:'',after:'',approved:false,reason:'Convierte, pero al '+fPct(acos)+' ('+fInt(x.orders)+' pedidos, '+fEur(x.spend)+'). Si se repite, bajar la puja de la palabra que lo activa'+(x.kwText?(' («'+x.kwText+'»)'):'')+'.'})); }
+  }
+  /* --- emplazamientos --- */
+  for(const r of rows){ if(r.entity!=='bidadj') continue; const c=camps.get(r.campId); if(!campOk(c)) continue; if(c.m.spend<20||r.clicks<S.clicsMin) continue; const T=tgt(c.country); const pct=isFinite(r.pct)?r.pct:0; const base={country:c.country,campName:c.name,agName:'',campId:c.id,agId:'',row:r,label:r.placementRaw,sub:'ajuste actual '+fInt(pct)+' %',m:met(r)};
+    if(r.orders===0){ if(pct>0&&r.spend>=cpaT(c)*S.multCPA) add(Object.assign(base,{kind:'emplazamiento',before:pct,after:0,conf:'media',reason:'Sin pedidos con '+fEur(r.spend)+' de gasto y un ajuste del '+fInt(pct)+' %: se retira el sobreprecio.'})); continue; }
+    const acos=r.spend/r.sales;
+    if(acos<T*0.8&&r.orders>=3){ const nb=Math.min(S.emplMax,pct+S.emplPaso); if(nb>pct) add(Object.assign(base,{kind:'emplazamiento',before:pct,after:nb,conf:r.orders>=8?'alta':'media',reason:'Este emplazamiento convierte al '+fPct(r.clicks>0?r.orders/r.clicks:0)+' con ACOS '+fPct(acos)+' (objetivo '+fPct(T,0)+'). Subir el ajuste '+fInt(pct)+' → '+fInt(nb)+' % compra más cuota donde ya es rentable.'})); }
+    else if(acos>T*1.3&&pct>0){ const nb=Math.max(0,pct-S.emplPaso); add(Object.assign(base,{kind:'emplazamiento',before:pct,after:nb,conf:'media',reason:'ACOS '+fPct(acos)+' con un ajuste del '+fInt(pct)+' %: se paga de más por un emplazamiento que rinde por debajo del objetivo.'})); }
+  }
+  for(const p of props){ if(p.kind==='emplazamiento'&&/business/i.test(p.label)&&p.after>p.before){ p.approved=false; p.note='Desmarcado por defecto: el ajuste de Amazon Business se multiplica sobre los demás emplazamientos; apruébalo solo si quieres empujar B2B.'; p.noteKind='warn'; } }
+  /* --- campañas --- */
+  const days=Math.max(1,S.dias||60);
+  for(const c of camps.values()){ if(!campOk(c)) continue; const T=tgt(c.country), cpa=cpaT(c); const base={country:c.country,campName:c.name,agName:'',campId:c.id,agId:'',row:c.r,label:c.name,sub:'campaña',m:{imp:c.m.imp,clicks:c.m.clicks,spend:c.m.spend,sales:c.m.sales,orders:c.m.orders,acos:c.m.sales>0?c.m.spend/c.m.sales:NaN,cpc:c.m.clicks?c.m.spend/c.m.clicks:NaN}};
+    if(c.m.orders===0&&c.m.spend>=3*cpa&&c.state==='enabled'){ add(Object.assign(base,{kind:'campana',sub:'pausar campaña',before:'activa',after:'en pausa',conf:'media',reason:fEur(c.m.spend)+' gastados en el periodo sin ningún pedido.'})); continue; }
+    if(c.m.orders>=5&&isFinite(c.budget)&&c.budget>0){ const daily=c.m.spend/days; const acos=c.m.spend/c.m.sales; if(daily>=0.85*c.budget&&acos<=T*0.9){ const nb=r2(c.budget*(1+S.presupuestoPct/100)); add(Object.assign(base,{kind:'campana',sub:'subir presupuesto',before:c.budget,after:nb,approved:false,conf:'media',reason:'Gasta '+fEur(daily)+'/día de un presupuesto de '+fEur(c.budget)+' con ACOS '+fPct(acos)+': va topada y es rentable. Propuesta +'+fInt(S.presupuestoPct)+' % (desmarcada por defecto).'})); } }
+  }
+  /* orden: impacto por gasto */
+  props.sort((p,q)=>(q.m.spend||0)-(p.m.spend||0));
+  STATE.props=props; STATE.camps=camps; STATE.ags=ags; STATE.totals=tot; STATE.byCountry=byC;
+  STATE.countries=Object.keys(byC).sort((a,b)=>byC[b].spend-byC[a].spend);
+}
+
+/* ===================== render ===================== */
+const KIND_LABEL=p=>({subir:'POTENCIAR',bajar:'ACOS-ALTO',pausar:'PAUSAR',negativo:p.neg==='asin'?'NEG-ASIN':'NEG-URGENTE',cosecha:p.neg==='asin'?'COSECHA ASIN':'COSECHA',emplazamiento:'EMPLAZAMIENTO',campana:p.sub==='pausar campaña'?'PAUSAR CAMPAÑA':'PRESUPUESTO',vigilar:'VIGILAR'}[p.kind]||p.kind.toUpperCase());
+const TAB_KINDS={pujas:['subir','bajar','pausar'],terminos:['negativo','cosecha','vigilar'],emplazamientos:['emplazamiento'],campanas:['campana']};
+const countable=p=>p.kind!=='vigilar';
+function matchesFilter(p){ const f=STATE.filters; if(f.pais&&p.country!==f.pais) return false; if(f.apr==='on'&&!p.approved) return false; if(f.apr==='off'&&p.approved) return false; if(f.q){ const q=lower(f.q); const hay=lower([p.campName,p.agName,p.label,p.sub,p.reason,p.term].join(' ')); if(!hay.includes(q)) return false; } return true; }
+function arrowHtml(p){
+  const inp=(v,step,unit,min)=>'<input type="number" step="'+step+'" min="'+min+'" data-edit="'+p.id+'" value="'+v+'" aria-label="Valor propuesto"> '+unit;
+  switch(p.kind){
+    case 'subir': case 'bajar': return '<span class="arrow">'+fBid(p.before)+' <span class="to">→</span> '+inp(Number(p.after).toFixed(2),'0.01','€','0.02')+'</span>';
+    case 'pausar': return '<span class="arrow">'+(isFinite(p.before)?fBid(p.before):'')+' <span class="to">→</span> <b>en pausa</b></span>';
+    case 'negativo': return '<span class="arrow"><span class="to">→</span> '+esc(p.after)+'</span>';
+    case 'cosecha': return '<span class="arrow">'+(p.neg==='asin'?'segm. producto':'nueva exacta')+' <span class="to">·</span> '+inp(Number(p.after).toFixed(2),'0.01','€','0.02')+'</span>';
+    case 'emplazamiento': return '<span class="arrow">'+fInt(p.before)+' % <span class="to">→</span> '+inp(Math.round(p.after),'5','%','0')+'</span>';
+    case 'campana': return p.sub==='pausar campaña'?'<span class="arrow">activa <span class="to">→</span> <b>en pausa</b></span>':'<span class="arrow">'+fEur(p.before)+' <span class="to">→</span> '+inp(Number(p.after).toFixed(2),'0.5','€/día','1')+'</span>';
+    default: return '<span class="muted">—</span>';
+  }
+}
+function rowHtml(p){ const m=p.m; return '<tr class="'+(p.approved?'':'off')+'" data-id="'+p.id+'">'
+  +'<td>'+(p.kind==='vigilar'?'':'<input type="checkbox" data-chk="'+p.id+'"'+(p.approved?' checked':'')+' aria-label="Aprobar cambio">')+'</td>'
+  +'<td><span class="pill '+p.kind+'">'+KIND_LABEL(p)+'</span>'+(p.conf?'<span class="conf '+p.conf+'" title="Confianza '+p.conf+'"></span>':'')+'</td>'
+  +'<td><span class="country">'+esc(p.country)+'</span></td>'
+  +'<td><div class="camp">'+esc(p.campName)+(p.agName?'<span class="g"> › '+esc(p.agName)+'</span>':'')+'</div></td>'
+  +'<td><div class="el">'+esc(p.label)+'</div>'+(p.sub?'<span class="sub">'+esc(p.sub)+'</span>':'')+'</td>'
+  +'<td class="r"><div class="m">'+fInt(m.clicks)+' clics · <b>'+fEur(m.spend)+'</b></div><div class="m">'+fEur(m.sales)+' · '+fInt(m.orders)+' ped. · '+(isFinite(m.acos)?fPct(m.acos):'—')+'</div></td>'
+  +'<td>'+arrowHtml(p)+'</td>'
+  +'<td class="motivo">'+esc(p.reason)+(p.note?'<span class="note '+(p.noteKind||'')+'">'+esc(p.note)+'</span>':'')+'</td></tr>'; }
+function sectionHtml(kind,title,list,hint){
+  const approved=list.filter(p=>p.approved).length;
+  return '<section class="section '+kind+'"><div class="section-h"><span class="stripe"></span><h3>'+esc(title)+'</h3><span class="cnt">'+list.length+(kind==='vigilar'?'':' · '+approved+' aprobadas')+'</span>'
+    +(kind==='vigilar'||!list.length?'':'<button class="btn link sm" data-all="'+kind+'" data-val="1">Marcar todo</button><button class="btn link sm" data-all="'+kind+'" data-val="0">Desmarcar</button>')+'</div>'
+    +(hint?'<p class="small" style="padding:8px 14px 0">'+hint+'</p>':'')
+    +(list.length?'<div class="tblwrap"><table><thead><tr><th></th><th>Acción</th><th>País</th><th>Campaña › grupo</th><th>Elemento</th><th class="r">Periodo</th><th>Antes → después</th><th>Motivo</th></tr></thead><tbody>'+list.map(rowHtml).join('')+'</tbody></table></div>':'<div class="empty">Nada que proponer aquí con las reglas actuales.</div>')+'</section>';
+}
+function kpisHtml(){ const t=STATE.totals; if(!t) return ''; const acos=t.sales>0?t.spend/t.sales:NaN; const T=STATE.settings.acos/100; const cls=!isFinite(acos)?'':(acos<=T?'good':(acos<=T*1.3?'warn':'bad')); const cpc=t.clicks?t.spend/t.clicks:NaN; const days=Math.max(1,STATE.settings.dias||60);
+  return '<div class="kpi"><div class="l">Gasto</div><div class="v num">'+fEur(t.spend)+'</div><div class="s">'+fEur(t.spend/days)+' al día · '+fInt(t.clicks)+' clics</div></div>'
+  +'<div class="kpi"><div class="l">Ventas atribuidas</div><div class="v num">'+fEur(t.sales)+'</div><div class="s">'+fInt(t.orders)+' pedidos · ROAS '+(t.spend?fDec(t.sales/t.spend,2):'—')+'</div></div>'
+  +'<div class="kpi '+cls+'"><div class="l">ACOS</div><div class="v num">'+(isFinite(acos)?fPct(acos):'—')+'</div><div class="s">objetivo '+fPct(T,0)+(isFinite(acos)?' · '+(acos<=T?'dentro':'+'+fDec((acos-T)*100,1)+' puntos'):'')+'</div></div>'
+  +'<div class="kpi"><div class="l">CPC medio</div><div class="v num">'+(isFinite(cpc)?fBid(cpc):'—')+'</div><div class="s">CVR '+(t.clicks?fPct(t.orders/t.clicks):'—')+'</div></div>'
+  +'<div class="kpi"><div class="l">Campañas</div><div class="v num">'+t.active+' <span class="muted" style="font-size:16px">/ '+t.camps+'</span></div><div class="s">activas / no archivadas · '+STATE.countries.filter(c=>c!=='—').join(' · ')+'</div></div>'; }
+function chipsHtml(){ const cnt={}; for(const p of STATE.props){ cnt[p.kind]=(cnt[p.kind]||0)+1; } const order=[['subir','Subir puja'],['bajar','Bajar puja'],['pausar','Pausar'],['negativo','Negativizar'],['cosecha','Cosechar'],['emplazamiento','Emplazamientos'],['campana','Campañas'],['vigilar','Vigilar']]; const tabOf={subir:'pujas',bajar:'pujas',pausar:'pujas',negativo:'terminos',cosecha:'terminos',vigilar:'terminos',emplazamiento:'emplazamientos',campana:'campanas'}; return order.filter(([k])=>cnt[k]).map(([k,l])=>'<button class="chip '+k+'" data-goto="'+tabOf[k]+'">'+l+' <b>'+cnt[k]+'</b></button>').join('')||'<span class="small">Sin propuestas: o la cuenta está limpia o faltan datos (¿hay clics en el periodo?).</span>'; }
+function verdict(c){ const T=tgt(c.country); const m=c.m; if(m.spend<1) return ['—','info']; if(m.orders===0) return ['sin ventas','bad']; const a=m.spend/m.sales; if(a<=T*0.9) return ['rentable','ok']; if(a<=T*1.2) return ['en objetivo','ok']; if(a<=T*1.5) return ['al límite','warn']; return ['pierde','bad']; }
+function resumenHtml(){
+  const byC=STATE.byCountry||{}; const rowsC=STATE.countries.map(cc=>{ const b=byC[cc]; const T=tgt(cc); const a=b.sales>0?b.spend/b.sales:NaN; const st=!isFinite(a)?['—','info']:(a<=T?['dentro','ok']:(a<=T*1.3?['por encima','warn']:['muy por encima','bad'])); return '<tr><td><span class="country">'+esc(cc)+'</span> '+esc(COUNTRY_NAMES[cc]||'')+'</td><td class="r num">'+fEur(b.spend)+'</td><td class="r num">'+fEur(b.sales)+'</td><td class="r num">'+fInt(b.orders)+'</td><td class="r num">'+(isFinite(a)?fPct(a):'—')+'</td><td class="r num">'+fPct(T,0)+'</td><td><span class="pill '+st[1]+'">'+st[0]+'</span></td></tr>'; }).join('');
+  const camps=Array.from(STATE.camps.values()).filter(c=>c.state!=='archived'&&c.m.spend>0).sort((a,b)=>b.m.spend-a.m.spend).slice(0,8);
+  const rowsT=camps.map(c=>{ const v=verdict(c); const a=c.m.sales>0?c.m.spend/c.m.sales:NaN; return '<tr><td><div class="camp">'+esc(c.name)+'</div></td><td><span class="country">'+esc(c.country)+'</span></td><td><span class="pill '+(c.state==='enabled'?'ok':'info')+'">'+(c.state==='enabled'?'activa':'en pausa')+'</span></td><td class="r num">'+fEur(c.m.spend)+'</td><td class="r num">'+fInt(c.m.orders)+'</td><td class="r num">'+(isFinite(a)?fPct(a):'—')+'</td><td><span class="pill '+v[1]+'">'+v[0]+'</span></td></tr>'; }).join('');
+  const nRev=STATE.props.filter(p=>p.kind==='negativo'||p.kind==='cosecha').length;
+  const claude='<div class="card claude"><h3>Revisión con Claude</h3><p class="small">Claude juzga si cada término candidato a negativo o a cosecha describe de verdad el producto, en el idioma que sea, y redacta el resumen ejecutivo. Lo que considere relevante queda desmarcado con su nota; la decisión final es tuya.</p>'
+    +'<label class="small" for="ctxProducto" style="display:block;margin-top:10px">¿Qué vende esta cuenta? (una línea)</label><textarea id="ctxProducto" placeholder="Ej.: cinta adhesiva de doble cara de espuma para exterior, 25 y 50 mm">'+esc(STATE.ctx||'')+'</textarea>'
+    +(STATE.sample
+      ?'<div class="row"><button class="btn ink" id="btnClaude">Revisar '+nRev+' términos</button><button class="btn" id="btnClaudeStop" hidden>Detener</button></div>'
+      :'<div class="row"><button class="btn ink" id="btnCopiarPrompt">Copiar prompt de '+nRev+' términos</button></div><p class="small" style="margin-top:8px">Pégalo en <b>claude.ai</b> (o en el asistente que uses), copia su respuesta y devuélvela aquí:</p><textarea id="claudePaste" placeholder="Pega aquí la respuesta JSON de Claude" style="margin-top:6px"></textarea><div class="row"><button class="btn" id="btnPegarRespuesta">Aplicar respuesta</button></div>')
+    +'<div class="status" id="claudeStatus"></div>'
+    +(STATE.claudeText?'<div class="out" id="claudeOut">'+esc(STATE.claudeText)+'</div>':'<div class="out" id="claudeOut" hidden></div>')+'</div>';
+  return '<div class="grid2"><div><section class="section"><div class="section-h"><span class="stripe"></span><h3>Por país</h3><span class="cnt">'+STATE.countries.length+'</span></div><div class="tblwrap"><table class="ctry-table"><thead><tr><th>País</th><th class="r">Gasto</th><th class="r">Ventas</th><th class="r">Pedidos</th><th class="r">ACOS</th><th class="r">Objetivo</th><th></th></tr></thead><tbody>'+rowsC+'</tbody></table></div></section>'
+    +'<section class="section"><div class="section-h"><span class="stripe"></span><h3>Campañas con más gasto</h3><span class="cnt">top '+camps.length+'</span></div><div class="tblwrap"><table><thead><tr><th>Campaña</th><th>País</th><th>Estado</th><th class="r">Gasto</th><th class="r">Pedidos</th><th class="r">ACOS</th><th></th></tr></thead><tbody>'+rowsT+'</tbody></table></div></section></div>'
+    +'<div>'+claude+'<div class="card" style="margin-top:14px"><h3>Cómo decide el motor</h3><p class="small">Puja nueva = puja actual × (ACOS objetivo ÷ ACOS real), acotada a ±'+fInt(STATE.settings.subidaMax)+' % y entre '+fBid(STATE.settings.pujaMin)+' y '+fBid(STATE.settings.pujaMax)+'. Solo toca lo que tiene ≥ '+STATE.settings.clicsMin+' clics. Pausa o negativiza lo que lleva ≥ '+STATE.settings.clicsSinPedido+' clics (o '+STATE.settings.multCPA+' × CPA objetivo de gasto) sin un solo pedido. Cosecha como exacta los términos con ≥ '+STATE.settings.cosechaPedidos+' pedidos por debajo del objetivo. Amazon es solo lectura: nada se aplica hasta que subes el fichero.</p></div></div></div>';
+}
+function campanasHtml(){ const S=STATE.settings; const list=Array.from(STATE.camps.values()).filter(c=>c.state!=='archived'&&(S.incluirPausadas||c.state==='enabled'||c.m.spend>0)).filter(c=>(!STATE.filters.pais||c.country===STATE.filters.pais)&&(!STATE.filters.q||lower(c.name).includes(lower(STATE.filters.q)))).sort((a,b)=>b.m.spend-a.m.spend);
+  const days=Math.max(1,S.dias||60);
+  const rows=list.map(c=>{ const v=verdict(c); const a=c.m.sales>0?c.m.spend/c.m.sales:NaN; const daily=c.m.spend/days; const pct=isFinite(c.budget)&&c.budget>0?daily/c.budget:NaN; return '<tr><td><div class="camp">'+esc(c.name)+'</div><span class="small">'+esc(c.targeting==='auto'?'automática':'manual')+(c.strategy?' · '+esc(c.strategy):'')+'</span></td><td><span class="country">'+esc(c.country)+'</span></td><td><span class="pill '+(c.state==='enabled'?'ok':'info')+'">'+(c.state==='enabled'?'activa':'en pausa')+'</span></td><td class="r num">'+(isFinite(c.budget)?fEur(c.budget):'—')+'</td><td class="r"><div class="num">'+fEur(daily)+'</div>'+(isFinite(pct)?'<div class="bar '+(pct>=0.85?'warn':'')+'" title="'+fPct(pct,0)+' del presupuesto"><i style="width:'+Math.min(100,pct*100)+'%"></i></div>':'')+'</td><td class="r num">'+fEur(c.m.spend)+'</td><td class="r num">'+fEur(c.m.sales)+'</td><td class="r num">'+fInt(c.m.orders)+'</td><td class="r num">'+(isFinite(a)?fPct(a):'—')+'</td><td class="r num">'+fPct(tgt(c.country),0)+'</td><td><span class="pill '+v[1]+'">'+v[0]+'</span></td></tr>'; }).join('');
+  return '<section class="section"><div class="section-h"><span class="stripe"></span><h3>Todas las campañas</h3><span class="cnt">'+list.length+'</span></div><div class="tblwrap"><table><thead><tr><th>Campaña</th><th>País</th><th>Estado</th><th class="r">Presup./día</th><th class="r">Gasto/día</th><th class="r">Gasto</th><th class="r">Ventas</th><th class="r">Pedidos</th><th class="r">ACOS</th><th class="r">Objetivo</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></section>'; }
+function registroHtml(){ const list=STATE.props.filter(p=>p.approved&&countable(p)); if(!list.length) return '<div class="section"><div class="empty">No hay cambios aprobados todavía.</div></div>'; const hoy=new Date().toLocaleDateString('es-ES'); return '<section class="section"><div class="section-h"><span class="stripe"></span><h3>Registro de cambios · '+esc(hoy)+'</h3><span class="cnt">'+list.length+' líneas</span></div><p class="small" style="padding:8px 14px 0">Esto es lo que irá al bulk y al CSV: fecha, campaña, cambio y motivo. Cópialo tal cual a tu memoria o a Notion.</p><div class="tblwrap"><table><thead><tr><th>País</th><th>Campaña › grupo</th><th>Cambio</th><th>Elemento</th><th>Antes → después</th><th>Motivo</th></tr></thead><tbody>'+list.map(p=>'<tr><td><span class="country">'+esc(p.country)+'</span></td><td><div class="camp">'+esc(p.kind==='cosecha'&&p.homeCamp?p.homeCamp.name+' › '+p.homeAg.name:p.campName+(p.agName?' › '+p.agName:''))+'</div></td><td><span class="pill '+p.kind+'">'+KIND_LABEL(p)+'</span></td><td><div class="el">'+esc(p.label)+'</div></td><td class="mono">'+esc(beforeAfterText(p))+'</td><td class="motivo">'+esc(p.reason)+(p.note?'<span class="note">'+esc(p.note)+'</span>':'')+'</td></tr>').join('')+'</tbody></table></div></section>'; }
+function beforeAfterText(p){ switch(p.kind){ case 'subir': case 'bajar': return fBid(p.before)+' → '+fBid(p.after); case 'pausar': return (isFinite(p.before)?fBid(p.before)+' → ':'')+'en pausa'; case 'negativo': return p.neg==='asin'?'nuevo ASIN negativo':'nueva exacta negativa'; case 'cosecha': return (p.neg==='asin'?'nueva segm. producto ':'nueva exacta ')+fBid(p.after); case 'emplazamiento': return fInt(p.before)+' % → '+fInt(p.after)+' %'; case 'campana': return p.sub==='pausar campaña'?'activa → en pausa':fEur(p.before)+' → '+fEur(p.after)+'/día'; default: return ''; } }
+function renderView(){ const v=$('#view'); const tab=STATE.tab; let html='';
+  if(tab==='resumen') html=resumenHtml();
+  else if(tab==='registro') html=registroHtml();
+  else { const kinds=TAB_KINDS[tab]||[]; const vis=STATE.props.filter(p=>kinds.includes(p.kind)&&matchesFilter(p)); const titles={subir:'Subir puja · ganadores con margen',bajar:'Bajar puja · ACOS por encima del objetivo',pausar:'Pausar · gastan y no venden',negativo:'Negativizar · términos que solo cuestan',cosecha:'Cosechar · términos que merecen su propia exacta',vigilar:'Vigilar · convierten caro (sin cambio en el bulk)',emplazamiento:'Ajustes de emplazamiento',campana:'Campañas · pausas y presupuestos'}; const hints={emplazamiento:'Recuerda que los ajustes de emplazamiento solo van de 0 a 900 %: para quitarle peso a un emplazamiento hay que bajar su porcentaje o subir los otros.',campana:'Las subidas de presupuesto salen desmarcadas: apruébalas una a una.'}; html=kinds.map(k=>sectionHtml(k,titles[k],vis.filter(p=>p.kind===k),hints[k])).join(''); if(tab==='campanas') html+=campanasHtml(); }
+  v.innerHTML=html; $('#toolbar').hidden=(tab==='resumen'||tab==='registro');
+  const total=STATE.props.filter(p=>(TAB_KINDS[tab]||[]).includes(p.kind)).length; const shown=STATE.props.filter(p=>(TAB_KINDS[tab]||[]).includes(p.kind)&&matchesFilter(p)).length; $('#filterInfo').textContent=(STATE.filters.pais||STATE.filters.q||STATE.filters.apr!=='all')?(shown+' de '+total+' propuestas'):'';
+}
+function updateFooter(){ const list=STATE.props.filter(p=>p.approved&&countable(p)); const spend=list.reduce((s,p)=>s+(p.m.spend||0),0); const cnt={}; list.forEach(p=>cnt[p.kind]=(cnt[p.kind]||0)+1); const parts=[['subir','subidas'],['bajar','bajadas'],['pausar','pausas'],['negativo','negativos'],['cosecha','cosechas'],['emplazamiento','emplazamientos'],['campana','campañas']].filter(([k])=>cnt[k]).map(([k,l])=>cnt[k]+' '+l).join(' · ');
+  $('#footSum').innerHTML='<b>'+list.length+'</b> cambios aprobados'+(parts?' <span class="muted">· '+esc(parts)+' · '+fEur(spend)+' de gasto afectado</span>':''); $('#btnBulk').disabled=!list.length; $('#btnCsv').disabled=!list.length;
+  for(const t in TAB_KINDS){ const n=STATE.props.filter(p=>TAB_KINDS[t].includes(p.kind)&&countable(p)).length; const el=$('[data-n="'+t+'"]'); if(el) el.textContent=n?n:''; }
+}
+function render(){
+  const chip=$('#fileChip'); chip.classList.toggle('example',STATE.ex); $('#fileName').textContent=STATE.fileName||'Sin fichero'; const per=STATE.period; $('#filePeriod').textContent=per?(fDate(per.from)+' – '+fDate(per.to)+' · '+per.days+' días'):(STATE.rows.length?(STATE.settings.dias+' días (ajustable)'):'');
+  $('#banner').hidden=!STATE.ex; $('#drop').hidden=!STATE.ex;
+  $('#kpis').innerHTML=kpisHtml(); $('#propChips').innerHTML=chipsHtml();
+  const sel=$('#fPais'); const cur=STATE.filters.pais; sel.innerHTML='<option value="">Todos los países</option>'+STATE.countries.map(c=>'<option value="'+esc(c)+'"'+(c===cur?' selected':'')+'>'+esc(c)+' · '+esc(COUNTRY_NAMES[c]||'')+'</option>').join('');
+  $$('.tab').forEach(t=>t.setAttribute('aria-selected',t.dataset.tab===STATE.tab?'true':'false'));
+  renderView(); updateFooter();
+}
+
+/* ===================== exportación ===================== */
+const fmtNum=(x,d)=>Number(x).toFixed(d==null?2:d);
+function buildBulk(){
+  const hdr=STATE.hdr, C=STATE.C; const out=[]; const numCols=new Set(NUMKEYS.map(k=>C[k]).filter(i=>i!=null));
+  const clone=r=>{ const a=r.raw.slice(); while(a.length<hdr.length) a.push(''); for(let i=0;i<a.length;i++) if(a[i]==null) a[i]=''; return a; };
+  const set=(a,k,v)=>{ if(C[k]!=null) a[C[k]]=v; };
+  const fresh=()=>{ const a=new Array(hdr.length).fill(''); set(a,'product',STATE.product||'Sponsored Products'); return a; };
+  for(const p of STATE.props){ if(!p.approved||!countable(p)) continue;
+    switch(p.kind){
+      case 'subir': case 'bajar': { const a=clone(p.row); set(a,'op',V('op','update')); set(a,'bid',fmtNum(p.after)); out.push(a); break; }
+      case 'pausar': { const a=clone(p.row); set(a,'op',V('op','update')); set(a,'state',V('state','paused')); out.push(a); break; }
+      case 'negativo': { const a=fresh(); set(a,'op',V('op','create')); set(a,'campId',p.campId); set(a,'campNameI',p.campName); set(a,'state',V('state','enabled'));
+        if(p.neg==='asin'){ set(a,'entity',V('entity','negPt')); set(a,'agId',p.agId); set(a,'agNameI',p.agName); set(a,'ptExpr','asin="'+p.asin+'"'); }
+        else { const c=STATE.camps.get(p.campId); const campLevel=!!(c&&c.targeting==='auto'); set(a,'entity',V('entity',campLevel?'campNegKw':'negKw')); if(!campLevel){ set(a,'agId',p.agId); set(a,'agNameI',p.agName); } set(a,'kwText',p.term); set(a,'match',V('match','negExact')); }
+        out.push(a); break; }
+      case 'cosecha': { const a=fresh(); set(a,'op',V('op','create')); set(a,'campId',p.homeCamp.id); set(a,'agId',p.homeAg.id); set(a,'campNameI',p.homeCamp.name); set(a,'agNameI',p.homeAg.name); set(a,'state',V('state','enabled')); set(a,'bid',fmtNum(p.after));
+        if(p.neg==='asin'){ set(a,'entity',V('entity','pt')); set(a,'ptExpr','asin="'+p.asin+'"'); } else { set(a,'entity',V('entity','keyword')); set(a,'kwText',p.term); set(a,'match',V('match','exact')); }
+        out.push(a); break; }
+      case 'emplazamiento': { const a=clone(p.row); set(a,'op',V('op','update')); set(a,'pct',fmtNum(p.after,0)); out.push(a); break; }
+      case 'campana': { const a=clone(p.row); set(a,'op',V('op','update')); if(p.sub==='pausar campaña') set(a,'state',V('state','paused')); else set(a,'budget',fmtNum(p.after)); out.push(a); break; }
+    }
+  }
+  return {hdr,rows:out,numCols};
+}
+function stamp(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+async function saveFile(name,data,mime){
+  if(STATE.downloads){ try{ const blob=(data instanceof Blob)?data:new Blob([data],{type:mime}); await STATE.downloads.save({filename:name,data:blob}); toast('Guardado: '+name); }catch(e){ const code=e&&e.code; if(code==='declined') toast('Descarga cancelada'); else if(code==='rate_limited') toast('Hay una descarga pendiente: espera un momento'); else toast('No se pudo guardar aquí ('+(code||'error')+')'); } return; }
+  const blob=(data instanceof Blob)?data:new Blob([data],{type:mime}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),3000); toast('Descargado: '+name);
+}
+function csvLog(){ const list=STATE.props.filter(p=>p.approved&&countable(p)); const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"'; const n=(x,d)=>isFinite(x)?String(Number(x).toFixed(d==null?2:d)).replace('.',','):''; const hoy=new Date().toLocaleDateString('es-ES');
+  const lines=[['Fecha','Fichero','País','Campaña','Grupo','Tipo','Elemento','Detalle','Antes','Después','Clics','Gasto','Ventas','Pedidos','ACOS','Motivo'].map(q).join(';')];
+  for(const p of list){ const campN=p.kind==='cosecha'&&p.homeCamp?p.homeCamp.name:p.campName; const agN=p.kind==='cosecha'&&p.homeAg?p.homeAg.name:p.agName; let antes='',despues=''; switch(p.kind){ case 'subir': case 'bajar': antes=n(p.before); despues=n(p.after); break; case 'pausar': antes=isFinite(p.before)?n(p.before):'activa'; despues='en pausa'; break; case 'negativo': despues=p.neg==='asin'?'ASIN negativo':'exacta negativa'; break; case 'cosecha': despues='puja '+n(p.after); break; case 'emplazamiento': antes=n(p.before,0)+'%'; despues=n(p.after,0)+'%'; break; case 'campana': antes=p.sub==='pausar campaña'?'activa':n(p.before); despues=p.sub==='pausar campaña'?'en pausa':n(p.after); break; }
+    lines.push([hoy,STATE.fileName,p.country,campN,agN,KIND_LABEL(p),p.label,p.sub||'',antes,despues,n(p.m.clicks,0),n(p.m.spend),n(p.m.sales),n(p.m.orders,0),isFinite(p.m.acos)?n(p.m.acos*100,1)+'%':'',p.reason+(p.note?' · '+p.note:'')].map(q).join(';')); }
+  return '﻿'+lines.join('\r\n');
+}
+function mdSummary(){ const t=STATE.totals||{}; const list=STATE.props.filter(p=>p.approved&&countable(p)); const cnt={}; list.forEach(p=>cnt[p.kind]=(cnt[p.kind]||0)+1); const acos=t.sales>0?t.spend/t.sales:NaN; const per=STATE.period; const byC=STATE.byCountry||{};
+  let md='## Bulk PPC · '+new Date().toLocaleDateString('es-ES')+' · '+STATE.fileName+(per?' ('+fDate(per.from)+' – '+fDate(per.to)+')':'')+'\n';
+  md+='Gasto '+fEur(t.spend||0)+' · ventas '+fEur(t.sales||0)+' · ACOS '+(isFinite(acos)?fPct(acos):'—')+' (objetivo '+fPct(STATE.settings.acos/100,0)+') · '+fInt(t.orders||0)+' pedidos\n';
+  md+='Por país: '+STATE.countries.map(cc=>{ const b=byC[cc]; const a=b.sales>0?b.spend/b.sales:NaN; return cc+' '+fEur(b.spend)+' / '+(isFinite(a)?fPct(a):'—'); }).join(' · ')+'\n\n';
+  md+='**'+list.length+' cambios aprobados**: '+Object.keys(cnt).map(k=>cnt[k]+' '+k).join(', ')+'\n';
+  const groups=[['subir','Subir puja'],['bajar','Bajar puja'],['pausar','Pausar'],['negativo','Negativizar'],['cosecha','Cosechar'],['emplazamiento','Emplazamientos'],['campana','Campañas']];
+  for(const [k,title] of groups){ const g=list.filter(p=>p.kind===k); if(!g.length) continue; md+='\n### '+title+' ('+g.length+')\n'; for(const p of g){ const campN=p.kind==='cosecha'&&p.homeCamp?p.homeCamp.name+' › '+p.homeAg.name:p.campName+(p.agName?' › '+p.agName:''); md+='- ['+p.country+'] '+campN+' · `'+p.label+'`'+(p.sub?' ('+p.sub+')':'')+': '+beforeAfterText(p)+' — '+p.reason+(p.note?' · '+p.note:'')+'\n'; } }
+  if(STATE.claudeText) md+='\n### Resumen de Claude\n'+STATE.claudeText+'\n';
+  return md;
+}
+async function copyText(txt){ try{ await navigator.clipboard.writeText(txt); toast('Copiado al portapapeles'); }catch(e){ const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); toast('Copiado al portapapeles'); }catch(e2){ toast('No se pudo copiar'); } ta.remove(); } }
+
+/* ===================== revisión con Claude ===================== */
+let claudeCtl=null;
+function claudePayload(){
+  STATE.ctx=($('#ctxProducto')||{}).value||STATE.ctx||''; const ctx=String(STATE.ctx).trim()||'(no indicado; dedúcelo de las palabras clave)';
+  const negs=STATE.props.filter(p=>p.kind==='negativo').slice(0,150); const cos=STATE.props.filter(p=>p.kind==='cosecha').slice(0,60); const bids=STATE.props.filter(p=>p.kind==='subir'||p.kind==='bajar'||p.kind==='pausar').slice(0,40);
+  const t=STATE.totals||{}; const acos=t.sales>0?t.spend/t.sales:NaN; const byC=STATE.byCountry||{};
+  const data={ producto:ctx, periodo_dias:STATE.settings.dias, acos_objetivo_pct:STATE.settings.acos, cuenta:{gasto:r2(t.spend||0),ventas:r2(t.sales||0),acos_pct:isFinite(acos)?r2(acos*100):null,pedidos:t.orders||0}, paises:STATE.countries.map(cc=>{ const b=byC[cc]; return {pais:cc,gasto:r2(b.spend),ventas:r2(b.sales),acos_pct:b.sales>0?r2(b.spend/b.sales*100):null,pedidos:b.orders}; }),
+    negativos:negs.map((p,i)=>({i,termino:p.term,pais:p.country,campana:p.campName,keyword_que_lo_activo:(p.sub||'').replace(/^vía /,''),clics:p.m.clicks,gasto:r2(p.m.spend)})),
+    cosechas:cos.map((p,i)=>({i,termino:p.term,pais:p.country,pedidos:p.m.orders,acos_pct:isFinite(p.m.acos)?r2(p.m.acos*100):null})),
+    pujas:bids.map(p=>({accion:p.kind,pais:p.country,campana:p.campName,elemento:p.label,antes:p.before,despues:p.after,clics:p.m.clicks,gasto:r2(p.m.spend),pedidos:p.m.orders,acos_pct:isFinite(p.m.acos)?r2(p.m.acos*100):null})) };
+  const prompt='Eres el gestor de Amazon Ads (Sponsored Products) de una marca que vende en Europa. Un motor de reglas ha analizado el bulk de la cuenta y propone cambios. Tu trabajo: (1) para cada término de búsqueda candidato a negativo, decir si el término describe realmente el producto de la cuenta (relevante), si claramente busca otra cosa (irrelevante) o si no está claro (dudoso). Ten en cuenta el idioma del término (español, italiano, francés, alemán, inglés…). Un término relevante con cero pedidos suele apuntar a un problema de ficha o precio, no a la palabra: dilo en la nota. (2) Para cada cosecha, confirmar si el término es coherente con el producto (ok o dudoso). (3) Escribir un resumen ejecutivo en español de 5 a 8 frases, concreto y con cifras, sobre el estado de la cuenta y las decisiones más importantes (qué país o campaña manda, dónde se pierde dinero, qué escalar).\n\nResponde SOLO con un JSON con esta forma exacta: {"negativos":[{"i":0,"veredicto":"irrelevante|relevante|dudoso","nota":"máximo 12 palabras"}],"cosechas":[{"i":0,"veredicto":"ok|dudoso","nota":"máximo 12 palabras"}],"resumen":"texto"}\nIncluye una entrada por cada índice i que recibas.\n\nDATOS:\n'+JSON.stringify(data);
+  return {prompt,negs,cos};
+}
+function claudeApply(res,negs,cos){
+  let nRel=0,nDud=0;
+  (res&&Array.isArray(res.negativos)?res.negativos:[]).forEach(v=>{ const p=negs[v.i]; if(!p) return; const ver=String(v.veredicto||'').toLowerCase(); if(ver.startsWith('relev')){ p.approved=false; p.note='Claude: parece relevante — '+(v.nota||'revisar antes de bloquear'); p.noteKind='warn'; nRel++; } else if(ver.startsWith('dud')){ p.note='Claude: dudoso — '+(v.nota||''); p.noteKind='warn'; nDud++; } else { p.note='Claude: irrelevante'+(v.nota?' — '+v.nota:''); p.noteKind=''; } });
+  (res&&Array.isArray(res.cosechas)?res.cosechas:[]).forEach(v=>{ const p=cos[v.i]; if(!p) return; const ver=String(v.veredicto||'').toLowerCase(); if(ver.startsWith('dud')){ p.note='Claude: dudoso — '+(v.nota||''); p.noteKind='warn'; } else { p.note='Claude: coherente con el producto'+(v.nota?' — '+v.nota:''); p.noteKind=''; } });
+  STATE.claudeText=res&&typeof res.resumen==='string'?res.resumen:'';
+  return 'Revisión aplicada: '+negs.length+' negativos y '+cos.length+' cosechas revisados · '+nRel+' negativos desmarcados por relevantes · '+nDud+' dudosos anotados.';
+}
+async function revisarConClaude(){
+  const sample=STATE.sample; if(!sample) return; const st=$('#claudeStatus'), out=$('#claudeOut'), btn=$('#btnClaude'), stop=$('#btnClaudeStop');
+  const {prompt,negs,cos}=claudePayload();
+  claudeCtl=new AbortController(); btn.disabled=true; stop.hidden=false; st.textContent='Pensando… (la primera vez claude.ai te pedirá permiso)'; out.hidden=false; out.textContent='';
+  try{
+    const res=await sample.json(prompt,{modelTier:'default',signal:claudeCtl.signal,onText:({text})=>{ st.textContent='Escribiendo… '+text.length+' caracteres'; }});
+    const msg=claudeApply(res,negs,cos); render(); const s2=$('#claudeStatus'); if(s2) s2.textContent=msg; toast('Claude ha revisado las propuestas');
+  }catch(e){ const code=e&&e.code; if(code==='cancelled') st.textContent='Revisión detenida.'; else if(code==='not_granted'){ st.textContent='Sin permiso para consultar a Claude en esta vista.'; STATE.sample=null; render(); } else if(code==='rate_limited') st.textContent='Demasiadas consultas seguidas: espera un poco y vuelve a intentarlo.'; else if(code==='invalid_json') st.textContent='Claude no devolvió un JSON válido; prueba otra vez con menos propuestas.'; else if(code==='prompt_too_large') st.textContent='Demasiadas propuestas para una sola consulta: filtra por país y repite.'; else st.textContent='No se pudo completar la revisión ('+(code||'error')+').'; }
+  finally{ claudeCtl=null; const b=$('#btnClaude'); if(b) b.disabled=false; const s=$('#btnClaudeStop'); if(s) s.hidden=true; }
+}
+/* modo manual: sirve en cualquier navegador (copiar prompt → pegar respuesta) */
+function copiarPrompt(){ const {prompt}=claudePayload(); const n=STATE.props.filter(p=>p.kind==='negativo').length+STATE.props.filter(p=>p.kind==='cosecha').length; copyText(prompt); const st=$('#claudeStatus'); if(st) st.textContent='Prompt copiado ('+fInt(prompt.length)+' caracteres, '+n+' propuestas). Pégalo en claude.ai y trae la respuesta aquí.'; }
+function pegarRespuesta(){
+  const ta=$('#claudePaste'), st=$('#claudeStatus'); if(!ta) return; const raw=String(ta.value||'').trim(); if(!raw){ if(st) st.textContent='Pega antes la respuesta JSON de Claude.'; return; }
+  let res=null; const intentos=[raw]; const fence=raw.match(/```(?:json)?\s*([\s\S]*?)```/); if(fence) intentos.push(fence[1]); const a=raw.indexOf('{'), b=raw.lastIndexOf('}'); if(a>=0&&b>a) intentos.push(raw.slice(a,b+1));
+  for(const s of intentos){ try{ res=JSON.parse(s); break; }catch(e){} }
+  if(!res||typeof res!=='object'){ if(st) st.textContent='Eso no es un JSON válido: copia la respuesta entera de Claude, incluidas las llaves.'; return; }
+  const {negs,cos}=claudePayload(); const msg=claudeApply(res,negs,cos); render(); const s2=$('#claudeStatus'); if(s2) s2.textContent=msg; toast('Revisión aplicada');
+}
+
+/* ===================== datos de ejemplo (marca ficticia) ===================== */
+const HDR_ES=['Producto','Entidad','Operación','ID de la campaña','ID del grupo de anuncios','ID de la cartera','ID del anuncio','ID de palabra clave','ID de segmentación por productos','Nombre de la campaña','Nombre del grupo de anuncios','Nombre de la campaña (Solo informativo)','Nombre del grupo de anuncios (Solo informativo)','Nombre de la cartera (Solo informativo)','Fecha de inicio','Fecha de finalización','Tipo de segmentación','Estado','Estado de la campaña (Solo informativo)','Estado del grupo de anuncios (Solo informativo)','Presupuesto diario','SKU','ASIN (Solo informativo)','Estado de aptitud (Solo informativo)','Motivo de no aptitud (Solo informativo)','Puja predeterminada del grupo de anuncios','Puja predeterminada del grupo de anuncios (Solo informativo)','Puja','Texto de palabra clave','Palabra clave en idioma nativo','Configuración regional del idioma nativo','Tipo de coincidencia','Estrategia de pujas','Emplazamiento','Porcentaje','Fórmula de segmentación por productos','Fórmula de segmentación por productos aplicada (Solo informativo)','ID de audiencia','Porcentaje de cohorte de compradores','Tipo de cohorte de compradores','Nombre del segmento (Solo informativo)','Sitios','Impresiones','Clics','Índice de clics','Inversión','Ventas','Pedidos','Unidades','Índice de conversión','ACOS','CPC','ROAS'];
+const ST_ES=['Producto','ID de la campaña','ID del grupo de anuncios','ID de palabra clave','ID de segmentación por productos','Nombre de la campaña (Solo informativo)','Nombre del grupo de anuncios (Solo informativo)','Nombre de la cartera (Solo informativo)','Estado','Estado de la campaña (Solo informativo)','Puja','Texto de palabra clave','Tipo de coincidencia','Fórmula de segmentación por productos','Fórmula de segmentación por productos aplicada (Solo informativo)','Término de búsqueda de los clientes','Impresiones','Clics','Índice de clics','Inversión','Ventas','Pedidos','Unidades','Índice de conversión','ACOS','CPC','ROAS'];
+function loadExample(){
+  const C=mapHeader(HDR_ES), CS=mapHeader(ST_ES); const rows=[], st=[]; let idn=500000000001;
+  const perf=(clicks,cpc,orders,aov)=>{ const spend=r2(clicks*cpc), sales=r2(orders*aov); return {imp:clicks*48,clicks,spend,sales,orders,units:orders,ctr:r2(1/48),cvr:clicks?r2(orders/clicks):0,acos:sales?r2(spend/sales):0,cpc:clicks?cpc:0,roas:spend?r2(sales/spend):0}; };
+  const put=(o)=>{ const a=new Array(HDR_ES.length).fill(''); a[C.product]='Sponsored Products'; for(const k in o){ if(C[k]!=null&&o[k]!==undefined) a[C[k]]=String(o[k]); } rows.push(a); return a; };
+  const putS=(o)=>{ const a=new Array(ST_ES.length).fill(''); a[CS.product]='Sponsored Products'; for(const k in o){ if(CS[k]!=null&&o[k]!==undefined) a[CS[k]]=String(o[k]); } st.push(a); };
+  const sum=(list)=>list.reduce((s,p)=>({imp:s.imp+p.imp,clicks:s.clicks+p.clicks,spend:r2(s.spend+p.spend),sales:r2(s.sales+p.sales),orders:s.orders+p.orders,units:s.units+p.units}),{imp:0,clicks:0,spend:0,sales:0,orders:0,units:0});
+  const camp=(def)=>{ const campId=String(idn++), agId=String(idn++); const items=def.items.map(it=>Object.assign({},it,{p:perf(it.clicks,it.cpc,it.orders,def.aov)})); const tot=sum(items.map(i=>i.p)); const state=def.state||'activada';
+    const cm=Object.assign({},tot,{ctr:r2(tot.clicks/Math.max(1,tot.imp)),cvr:tot.clicks?r2(tot.orders/tot.clicks):0,acos:tot.sales?r2(tot.spend/tot.sales):0,cpc:tot.clicks?r2(tot.spend/tot.clicks):0,roas:tot.spend?r2(tot.sales/tot.spend):0});
+    put(Object.assign({entity:'Campaña',campId,campName:def.name,campNameI:def.name,portfolioNameI:def.portfolio,startDate:'20260601',targetingType:def.auto?'Automática':'Manual',state,campStateI:state,budget:def.budget,strategy:def.strategy||'Pujas dinámicas: solo a la baja'},cm));
+    put({entity:'Grupo de anuncios',campId,agId,agName:def.ag,campNameI:def.name,agNameI:def.ag,portfolioNameI:def.portfolio,state:'activada',campStateI:state,agStateI:'activada',agBid:def.defBid,agBidI:def.defBid});
+    put({entity:'Anuncio de producto',campId,agId,adId:String(idn++),campNameI:def.name,agNameI:def.ag,portfolioNameI:def.portfolio,state:'activada',campStateI:state,agStateI:'activada',sku:'ACME-TERMO-500',asinI:'B0ACME50001'});
+    for(const it of items){ const base={campId,agId,campNameI:def.name,agNameI:def.ag,portfolioNameI:def.portfolio,state:'activada',campStateI:state,agStateI:'activada'}; if(it.kw) put(Object.assign(base,{entity:'Palabra clave',kwId:String(idn++),bid:it.bid,kwText:it.kw,match:it.match},it.p)); else put(Object.assign(base,{entity:'Segmentación por productos',ptId:String(idn++),bid:it.bid,ptExpr:it.expr,ptExprI:it.expr},it.p)); }
+    for(const pl of (def.placements||[])){ const p=perf(pl.clicks,pl.cpc,pl.orders,def.aov); put(Object.assign({entity:'Ajuste de puja',campId,campNameI:def.name,portfolioNameI:def.portfolio,campStateI:state,strategy:def.strategy||'Pujas dinámicas: solo a la baja',placement:pl.name,pct:pl.pct},p)); }
+    for(const ng of (def.negatives||[])) put({entity:'Palabra clave negativa',campId,agId,kwId:String(idn++),campNameI:def.name,agNameI:def.ag,state:'activada',campStateI:state,agStateI:'activada',kwText:ng,match:'Exacta negativa'});
+    for(const t of (def.terms||[])){ const p=perf(t.clicks,t.cpc,t.orders,def.aov); putS(Object.assign({campId,agId,kwId:String(idn++),campNameI:def.name,agNameI:def.ag,portfolioNameI:def.portfolio,state:'activada',campStateI:state,bid:t.bid,kwText:t.via,match:t.match,term:t.term},p)); }
+  };
+  const P=(name,pct,clicks,cpc,orders)=>({name,pct,clicks,cpc,orders});
+  camp({name:'TERMO | AUTO | ES | 1.9',ag:'Auto ES',portfolio:'TERMO',auto:true,budget:15,defBid:0.4,aov:19.9,strategy:'Pujas dinámicas: al alza y a la baja',
+    items:[{expr:'close-match',bid:0.45,clicks:260,cpc:0.44,orders:46},{expr:'loose-match',bid:0.38,clicks:90,cpc:0.36,orders:6},{expr:'substitutes',bid:0.30,clicks:24,cpc:0.31,orders:0},{expr:'complements',bid:0.25,clicks:4,cpc:0.25,orders:0}],
+    placements:[P('Emplazamiento superior',0,60,0.55,14),P('Emplazamiento del resto de la búsqueda',0,210,0.40,30),P('Emplazamiento de la página del producto',0,108,0.38,8),P('Emplazamiento Amazon Business',0,0,0,0)],
+    negatives:['termo electrico'],
+    terms:[{term:'botella termica niños',via:'close-match',match:'-',bid:0.45,clicks:18,cpc:0.42,orders:3},{term:'funda botella termica',via:'loose-match',match:'-',bid:0.38,clicks:12,cpc:0.40,orders:0},{term:'termo electrico agua',via:'loose-match',match:'-',bid:0.38,clicks:11,cpc:0.38,orders:0},{term:'B08ZZ1234X',via:'substitutes',match:'-',bid:0.30,clicks:15,cpc:0.31,orders:0},{term:'B0COMPET03',via:'substitutes',match:'-',bid:0.30,clicks:14,cpc:0.42,orders:3},{term:'termo cafe grande',via:'close-match',match:'-',bid:0.45,clicks:9,cpc:0.42,orders:1},{term:'vaso termico',via:'loose-match',match:'-',bid:0.38,clicks:30,cpc:0.45,orders:2}]});
+  camp({name:'TERMO | EXACTA | ES | 1.9',ag:'Exactas ES',portfolio:'TERMO',budget:20,defBid:0.5,aov:19.9,
+    items:[{kw:'botella termica acero',match:'Exacta',bid:0.05,clicks:40,cpc:0.05,orders:3},{kw:'termo cafe',match:'Exacta',bid:0.60,clicks:85,cpc:0.58,orders:6},{kw:'botella agua deporte',match:'Exacta',bid:0.50,clicks:14,cpc:0.48,orders:0},{kw:'termo 1 litro',match:'Exacta',bid:0.45,clicks:60,cpc:0.43,orders:5},{kw:'termo acero inoxidable 500ml',match:'Exacta',bid:0.55,clicks:120,cpc:0.52,orders:3}],
+    placements:[P('Emplazamiento superior',0,90,0.55,9),P('Emplazamiento del resto de la búsqueda',0,150,0.50,12),P('Emplazamiento de la página del producto',30,60,0.48,2)],
+    terms:[{term:'termo cafe leche',via:'termo cafe',match:'Exacta',bid:0.60,clicks:11,cpc:0.55,orders:0},{term:'botella termica acero 750',via:'botella termica acero',match:'Exacta',bid:0.05,clicks:20,cpc:0.40,orders:4}]});
+  camp({name:'TERMO | ATAQUE | ES | 1.9',ag:'ASIN competencia',portfolio:'TERMO',budget:8,defBid:0.35,aov:19.9,
+    items:[{expr:'asin="B0COMPET01"',bid:0.35,clicks:40,cpc:0.34,orders:0},{expr:'asin="B0COMPET02"',bid:0.35,clicks:80,cpc:0.33,orders:9}],
+    placements:[P('Emplazamiento de la página del producto',0,120,0.33,9)]});
+  camp({name:'THERMOS | AMPLIA | FR | 1.9',ag:'Larges FR',portfolio:'TERMO',budget:3.5,defBid:0.5,aov:21.9,
+    items:[{kw:'bouteille isotherme',match:'Amplia',bid:0.55,clicks:300,cpc:0.52,orders:40},{kw:'gourde inox',match:'Amplia',bid:0.50,clicks:70,cpc:0.47,orders:3},{kw:'thermos café',match:'Amplia',bid:0.45,clicks:16,cpc:0.44,orders:0},{kw:'bouteille isotherme enfant',match:'Amplia',bid:0.40,clicks:5,cpc:0.38,orders:1}],
+    placements:[P('Emplazamiento superior',0,100,0.60,18),P('Emplazamiento del resto de la búsqueda',0,220,0.50,22),P('Emplazamiento de la página del producto',40,70,0.45,3)],
+    terms:[{term:'sac isotherme',via:'gourde inox',match:'Amplia',bid:0.50,clicks:16,cpc:0.50,orders:0},{term:'bouteille isotherme 1l',via:'bouteille isotherme',match:'Amplia',bid:0.55,clicks:30,cpc:0.50,orders:5},{term:'gourde isotherme',via:'gourde inox',match:'Amplia',bid:0.50,clicks:40,cpc:0.48,orders:2}]});
+  camp({name:'THERMOSFLASCHE | AUTO | DE | 1.9',ag:'Auto DE',portfolio:'TERMO',auto:true,budget:10,defBid:0.35,aov:20.9,state:'en pausa',
+    items:[{expr:'close-match',bid:0.40,clicks:120,cpc:0.39,orders:14},{expr:'loose-match',bid:0.30,clicks:60,cpc:0.29,orders:2}],
+    placements:[P('Emplazamiento superior',0,50,0.45,8),P('Emplazamiento del resto de la búsqueda',0,130,0.35,8)]});
+  camp({name:'TERMO | EXACTA | IT | 1.9',ag:'Esatte IT',portfolio:'TERMO',budget:6,defBid:0.4,aov:19.9,items:[{kw:'borraccia termica',match:'Exacta',bid:0.40,clicks:3,cpc:0.38,orders:0}]});
+  STATE.fileName='ejemplo-acme-termos.xlsx'; STATE.sheetName='Camp. de Sponsored Products'; STATE.hdr=HDR_ES; STATE.C=C; STATE.rows=rows.map(r=>mkRow(r,C)); STATE.stRows=st.map(r=>mkRow(r,CS)); STATE.ex=true; STATE.locale='es'; STATE.claudeText=''; STATE.ctx='botella térmica de acero inoxidable de 500 ml (marca ficticia ACME)';
+  const to=new Date(); const from=new Date(to.getTime()-59*86400000); STATE.period={from,to,days:60}; STATE.settings.dias=60; learn(STATE.rows); analyze(); render();
+}
+
+/* ===================== ajustes ===================== */
+const PAISES_UI=['ES','IT','FR','DE','NL','BE'];
+function fillSettingsForm(){ const S=STATE.settings; $('#sAcos').value=S.acos; $('#sDias').value=S.dias; $('#sClicsMin').value=S.clicsMin; $('#sClicsSinPedido').value=S.clicsSinPedido; $('#sMultCPA').value=S.multCPA; $('#sSubidaMax').value=S.subidaMax; $('#sBajadaMax').value=S.bajadaMax; $('#sPujaMin').value=S.pujaMin; $('#sPujaMax').value=S.pujaMax; $('#sCosecha').value=S.cosechaPedidos; $('#sEmplPaso').value=S.emplPaso; $('#sEmplMax').value=S.emplMax; $('#sPresu').value=S.presupuestoPct; $('#sIdioma').value=S.idioma; $('#sPausadas').value=S.incluirPausadas?'1':'0';
+  const pf=$('#paisFields'); const paises=Array.from(new Set(PAISES_UI.concat(STATE.countries.filter(c=>c!=='—')))); pf.innerHTML=paises.map(c=>'<div class="field"><label for="sP'+c+'">ACOS obj. '+esc(c)+' (%)</label><input id="sP'+c+'" data-pais="'+esc(c)+'" type="number" step="0.5" min="1" placeholder="'+S.acos+'" value="'+(S.acosPais[c]!=null?S.acosPais[c]:'')+'"></div>').join(''); }
+function readSettingsForm(){ const S=STATE.settings; const n=(id,def)=>{ const v=parseFloat($(id).value); return isFinite(v)?v:def; }; S.acos=n('#sAcos',DEF.acos); S.dias=Math.max(1,Math.round(n('#sDias',DEF.dias))); S.clicsMin=n('#sClicsMin',DEF.clicsMin); S.clicsSinPedido=n('#sClicsSinPedido',DEF.clicsSinPedido); S.multCPA=n('#sMultCPA',DEF.multCPA); S.subidaMax=n('#sSubidaMax',DEF.subidaMax); S.bajadaMax=Math.min(95,n('#sBajadaMax',DEF.bajadaMax)); S.pujaMin=Math.max(0.02,n('#sPujaMin',DEF.pujaMin)); S.pujaMax=Math.max(S.pujaMin,n('#sPujaMax',DEF.pujaMax)); S.cosechaPedidos=Math.max(1,Math.round(n('#sCosecha',DEF.cosechaPedidos))); S.emplPaso=n('#sEmplPaso',DEF.emplPaso); S.emplMax=clamp(n('#sEmplMax',DEF.emplMax),0,900); S.presupuestoPct=n('#sPresu',DEF.presupuestoPct); S.idioma=$('#sIdioma').value; S.incluirPausadas=$('#sPausadas').value==='1'; S.acosPais={}; $$('#paisFields input').forEach(i=>{ const v=parseFloat(i.value); if(isFinite(v)&&v>0) S.acosPais[i.dataset.pais]=v; }); saveSettings(); }
+function openDrawer(){ fillSettingsForm(); $('#drawer').classList.add('open'); $('#scrim').classList.add('open'); }
+function closeDrawer(){ $('#drawer').classList.remove('open'); $('#scrim').classList.remove('open'); }
+
+/* ===================== eventos ===================== */
+function handleFile(file){ if(!file) return; if(!/\.xlsx$/i.test(file.name)){ toast('Necesito el .xlsx descargado de Operaciones masivas'); return; } toast('Leyendo '+file.name+'…'); const fr=new FileReader(); fr.onload=()=>{ try{ loadWorkbook(fr.result,file.name); }catch(e){ console.error(e); toast('No se pudo leer el fichero: '+(e&&e.message||e)); } }; fr.onerror=()=>toast('No se pudo leer el fichero'); fr.readAsArrayBuffer(file); }
+function wire(){
+  $('#btnLoad').onclick=()=>$('#fileInput').click(); $('#fileInput').onchange=e=>{ handleFile(e.target.files[0]); e.target.value=''; };
+  $('#drop').onclick=()=>$('#fileInput').click();
+  let dragDepth=0; document.addEventListener('dragenter',e=>{ e.preventDefault(); dragDepth++; document.body.classList.add('dragging'); }); document.addEventListener('dragover',e=>{ e.preventDefault(); }); document.addEventListener('dragleave',e=>{ dragDepth=Math.max(0,dragDepth-1); if(!dragDepth) document.body.classList.remove('dragging'); }); document.addEventListener('drop',e=>{ e.preventDefault(); dragDepth=0; document.body.classList.remove('dragging'); const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; handleFile(f); });
+  $('#tabs').addEventListener('click',e=>{ const t=e.target.closest('.tab'); if(!t) return; STATE.tab=t.dataset.tab; render(); });
+  $('#propChips').addEventListener('click',e=>{ const c=e.target.closest('[data-goto]'); if(!c) return; STATE.tab=c.dataset.goto; render(); });
+  $('#fPais').onchange=e=>{ STATE.filters.pais=e.target.value; renderView(); }; $('#fApr').onchange=e=>{ STATE.filters.apr=e.target.value; renderView(); }; let qT; $('#fQ').oninput=e=>{ clearTimeout(qT); qT=setTimeout(()=>{ STATE.filters.q=e.target.value; renderView(); },180); };
+  $('#view').addEventListener('change',e=>{ const t=e.target; if(t.dataset.chk){ const p=STATE.props.find(x=>x.id===t.dataset.chk); if(p){ p.approved=t.checked; t.closest('tr').classList.toggle('off',!p.approved); updateFooter(); const sec=t.closest('.section'); if(sec){ const kind=p.kind; const list=STATE.props.filter(x=>x.kind===kind&&matchesFilter(x)); const cnt=sec.querySelector('.cnt'); if(cnt) cnt.textContent=list.length+' · '+list.filter(x=>x.approved).length+' aprobadas'; } } } else if(t.dataset.edit){ const p=STATE.props.find(x=>x.id===t.dataset.edit); if(p){ const v=parseFloat(t.value); if(isFinite(v)&&v>=0){ p.after=p.kind==='emplazamiento'?Math.round(v):r2(v); p.edited=true; } else t.value=p.after; } } });
+  $('#view').addEventListener('click',e=>{ const b=e.target.closest('[data-all]'); if(b){ const kind=b.dataset.all, val=b.dataset.val==='1'; STATE.props.forEach(p=>{ if(p.kind===kind&&matchesFilter(p)) p.approved=val; }); renderView(); updateFooter(); return; } if(e.target.id==='btnClaude') revisarConClaude(); if(e.target.id==='btnClaudeStop'&&claudeCtl) claudeCtl.abort(); if(e.target.id==='btnCopiarPrompt') copiarPrompt(); if(e.target.id==='btnPegarRespuesta') pegarRespuesta(); });
+  $('#btnClaudeTop').onclick=()=>{ STATE.tab='resumen'; render(); const b=$('#btnClaude')||$('#btnCopiarPrompt'); if(b) b.focus(); };
+  $('#btnSettings').onclick=openDrawer; $('#btnCloseDrawer').onclick=closeDrawer; $('#scrim').onclick=closeDrawer; document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDrawer(); });
+  $('#btnApply').onclick=()=>{ readSettingsForm(); analyze(); render(); closeDrawer(); toast('Reglas aplicadas'); };
+  $('#btnReset').onclick=()=>{ STATE.settings=Object.assign({},DEF,{acosPais:{}}); if(STATE.period) STATE.settings.dias=STATE.period.days; saveSettings(); fillSettingsForm(); analyze(); render(); toast('Ajustes restablecidos'); };
+  $('#btnBulk').onclick=()=>{ const b=buildBulk(); if(!b.rows.length){ toast('No hay cambios aprobados'); return; } const bytes=writeXlsx(STATE.sheetName||'Camp. de Sponsored Products',b.hdr,b.rows,b.numCols); saveFile('bulk-subida-'+stamp()+'.xlsx',bytes,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); };
+  $('#btnCsv').onclick=()=>saveFile('registro-cambios-ppc-'+stamp()+'.csv',csvLog(),'text/csv;charset=utf-8');
+  $('#btnCopy').onclick=()=>copyText(mdSummary());
+}
+async function initCaps(){ if(!(window.claude&&typeof window.claude.use==='function')) return; try{ const [d,s]=await Promise.all([window.claude.use('downloads').catch(()=>null),window.claude.use('sample').catch(()=>null)]); STATE.downloads=d||null; STATE.sample=(typeof s==='function')?s:null; }catch(e){ STATE.downloads=null; STATE.sample=null; } if(STATE.tab==='resumen') renderView(); }
+wire(); loadExample(); initCaps();
+const src=new URLSearchParams(location.search).get('src'); if(src){ fetch(src).then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.arrayBuffer(); }).then(b=>loadWorkbook(b,src.split('/').pop())).catch(e=>toast('No se pudo cargar '+src+': '+e.message)); }
+
+window.__BULKPPC={STATE,analyze,buildBulk,render,loadWorkbook,writeXlsx,readXlsx};
+})();
+</script>
