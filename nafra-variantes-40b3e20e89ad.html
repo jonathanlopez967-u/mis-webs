@@ -130,7 +130,7 @@ ul.body li b{color:var(--ink);font-weight:600}
   <div class="brandline">
     <span class="kicker">Análisis de variantes · últimos 30 días</span>
     <h1>Por qué la<br>publicidad se<br>concentra en <em>una</em><br>sola variante</h1>
-    <p class="dek">La funda verde absorbe el 93 % de la inversión publicitaria. La pregunta razonable es si conviene repartirla. Los números dicen que no, y señalan un problema distinto.</p>
+    <p class="dek">La funda verde absorbe el 93 % de la inversión publicitaria. La pregunta razonable es si conviene repartirla. Los números dicen que no — y localizan el problema real fuera de las campañas.</p>
   </div>
   <div class="meta">
     <b>Producto</b> Funda de coche para perro<br>
@@ -146,7 +146,7 @@ ul.body li b{color:var(--ink);font-weight:600}
   <div class="kpi"><span class="lab">Coste por unidad</span><span class="val up">8,13 €</span><span class="sub">verde · el más barato</span></div>
   <div class="kpi"><span class="lab">Misma cifra en negro</span><span class="val dn">11,71 €</span><span class="sub">+44 % más caro</span></div>
   <div class="kpi"><span class="lab">Y en naranja</span><span class="val dn">27,34 €</span><span class="sub">+236 % más caro</span></div>
-  <div class="kpi"><span class="lab">Desvío detectado</span><span class="val dn">40 %</span><span class="sub">venía del 4 %</span></div>
+  <div class="kpi"><span class="lab">Desvío detectado</span><span class="val dn">40 %</span><span class="sub">venía del 4 % · no es publicitario</span></div>
 </div>
 
 <section id="porque">
@@ -227,6 +227,27 @@ ul.body li b{color:var(--ink);font-weight:600}
   <p class="note"><b>Una comprobación hecha, con resultado parcial.</b> Se verificó si la ficha estaba mostrando por defecto una variante distinta a la anunciada. El resultado: la página principal del producto tiene efectivamente el <b>naranja</b> como variante destacada, y el verde figura el último de los tres colores. Eso afecta a quien llega por búsqueda natural, y explica que el verde no registre prácticamente ventas orgánicas pese a ser el más vendido. Pero no explica el desvío del tráfico de pago: entrando por el anuncio del verde, la página se carga correctamente en verde. La causa del desvío sigue abierta.</p>
 
   <p class="note"><b>Un detalle que llama la atención.</b> La variante destacada del producto es la naranja, que es precisamente <b>la que menos vende de las tres</b>. Destacar la de menor rendimiento no responde a ninguna lógica comercial, lo que sugiere una reasignación automática tras la interrupción de agosto que no se ha revertido. Devolver el verde a esa posición es una acción concreta y de coste cero.</p>
+
+  <h3>Dónde está exactamente el problema</h3>
+
+  <p>Para localizarlo se midió el desvío por <b>tipo de campaña</b>. Cada tipo capta un tráfico distinto: las de coincidencia exacta dependen de palabras concretas, las automáticas las elige Amazon, y las de ataque ni siquiera usan búsquedas —aparecen directamente en las fichas de la competencia—.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Tipo de campaña</th><th>1 – 16 agosto</th><th></th><th>24 ago – 5 sept</th><th>Variación</th></tr></thead>
+      <tbody>
+        <tr><td>Automática</td><td>5,2 %</td><td class="arw">→</td><td class="dn">41,8 %</td><td class="why">+37 puntos</td></tr>
+        <tr><td>Coincidencia exacta</td><td>8,6 %</td><td class="arw">→</td><td class="dn">33,3 %</td><td class="why">+25 puntos</td></tr>
+        <tr><td>Coincidencia amplia</td><td>10,7 %</td><td class="arw">→</td><td class="dn">52,0 %</td><td class="why">+41 puntos</td></tr>
+        <tr><td>Ataque a competidores</td><td>0 %</td><td class="arw">→</td><td class="dn">75,0 %</td><td class="why">+75 puntos · no depende de búsquedas</td></tr>
+        <tr><td>Productos sustitutos</td><td>0 %</td><td class="arw">→</td><td class="dn">30,0 %</td><td class="why">+30 puntos</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p><strong>Sube en los cinco a la vez.</strong> Si la causa estuviera en qué búsquedas o en qué posiciones aparecen los anuncios, sería imposible que afectara por igual a campañas que captan tráfico tan distinto. La conclusión es que <strong>el problema es posterior al clic</strong>: ocurre ya dentro de la página de producto.</p>
+
+  <p>Eso descarta de raíz cualquier ajuste publicitario como solución —ni pujas, ni presupuestos, ni palabras clave lo corrigen— y sitúa el trabajo en la ficha. Se comprobó también que la estrategia de pujas no se modificó en ninguna campaña durante el periodo, de modo que tampoco explica el cambio.</p>
 </section>
 
 <section id="reco">
